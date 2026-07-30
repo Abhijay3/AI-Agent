@@ -150,6 +150,101 @@
     50% { opacity: 0.5; }
   }
 
+  /* ---------- ticker ---------- */
+  #ticker {
+    z-index: 2;
+    overflow: hidden;
+    background: rgba(124, 92, 255, 0.06);
+    border-bottom: 1px solid var(--surface-border);
+    padding: 7px 0;
+  }
+  #tickerTrack {
+    display: flex;
+    width: max-content;
+    animation: ticker-scroll 32s linear infinite;
+  }
+  .tickerGroup {
+    display: flex;
+    gap: 36px;
+    padding-right: 36px;
+    flex-shrink: 0;
+  }
+  .tickerGroup span {
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+  }
+  @keyframes ticker-scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #tickerTrack { animation: none; }
+  }
+
+  /* ---------- session tabs ---------- */
+  #tabBar {
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: rgba(8, 5, 20, 0.4);
+    border-bottom: 1px solid var(--surface-border);
+  }
+  #tabs {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  #tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px 6px 12px;
+    border-radius: 10px;
+    background: var(--surface);
+    border: 1px solid transparent;
+    font-size: 12.5px;
+    color: var(--text-dim);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  .tab:hover { background: var(--surface-hover); }
+  .tab.active {
+    background: rgba(124, 92, 255, 0.15);
+    border-color: rgba(124, 92, 255, 0.4);
+    color: var(--text);
+  }
+  .tab-label {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tab-close {
+    background: none;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 2px 4px;
+    border-radius: 6px;
+    line-height: 1;
+  }
+  .tab-close:hover { color: var(--danger); background: rgba(255, 107, 129, 0.12); }
+  #newChatBtn {
+    flex-shrink: 0;
+    width: 30px; height: 30px;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
   /* ---------- chat area ---------- */
   #chatWrap {
     flex: 1;
@@ -397,6 +492,32 @@
     </div>
   </header>
 
+  <div id="ticker">
+    <div id="tickerTrack">
+      <div class="tickerGroup">
+        <span>🟢 Live order status lookups</span>
+        <span>🎫 Instant support ticket filing</span>
+        <span>📄 PDF analysis via upload</span>
+        <span>🔎 Real-time web search</span>
+        <span>🧮 Built-in calculator</span>
+        <span>🌦️ Live weather lookups</span>
+      </div>
+      <div class="tickerGroup" aria-hidden="true">
+        <span>🟢 Live order status lookups</span>
+        <span>🎫 Instant support ticket filing</span>
+        <span>📄 PDF analysis via upload</span>
+        <span>🔎 Real-time web search</span>
+        <span>🧮 Built-in calculator</span>
+        <span>🌦️ Live weather lookups</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="tabBar">
+    <div id="tabs"></div>
+    <button id="newChatBtn" type="button" class="icon-btn" title="New chat">+</button>
+  </div>
+
   <div id="chatWrap">
     <div id="chat"></div>
   </div>
@@ -434,17 +555,146 @@
     const attachChip = document.getElementById("attachChip");
     const attachName = document.getElementById("attachName");
     const attachRemove = document.getElementById("attachRemove");
+    const tabsEl = document.getElementById("tabs");
+    const newChatBtn = document.getElementById("newChatBtn");
 
     let attachedFilename = null;
 
-    const sessionId = (() => {
-      let id = localStorage.getItem("session_id");
-      if (!id) {
-        id = "web-" + Math.random().toString(36).slice(2, 10);
-        localStorage.setItem("session_id", id);
+    // ---------- session (multi-chat) management ----------
+    const SESSIONS_KEY = "chat_sessions";
+    const ACTIVE_KEY = "active_session_id";
+
+    function newSessionId() {
+      return "web-" + Math.random().toString(36).slice(2, 10);
+    }
+
+    function loadSessions() {
+      try {
+        const raw = localStorage.getItem(SESSIONS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length) return parsed;
+        }
+      } catch {}
+      // migrate from the old single-session storage format
+      const legacy = localStorage.getItem("session_id");
+      if (legacy) return [{ id: legacy, title: "Chat" }];
+      return [];
+    }
+
+    function saveSessions() {
+      localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+    }
+
+    let sessions = loadSessions();
+    if (sessions.length === 0) {
+      sessions = [{ id: newSessionId(), title: "New chat" }];
+    }
+    let activeId = localStorage.getItem(ACTIVE_KEY);
+    if (!activeId || !sessions.some((s) => s.id === activeId)) {
+      activeId = sessions[0].id;
+    }
+    saveSessions();
+    localStorage.setItem(ACTIVE_KEY, activeId);
+
+    function renderTabs() {
+      tabsEl.innerHTML = "";
+      for (const s of sessions) {
+        const tab = document.createElement("div");
+        tab.className = "tab" + (s.id === activeId ? " active" : "");
+
+        const label = document.createElement("span");
+        label.className = "tab-label";
+        label.textContent = s.title;
+        label.addEventListener("click", () => switchSession(s.id));
+
+        const close = document.createElement("button");
+        close.type = "button";
+        close.className = "tab-close";
+        close.textContent = "✕";
+        close.title = "Delete this chat";
+        close.addEventListener("click", (e) => {
+          e.stopPropagation();
+          deleteSession(s.id);
+        });
+
+        tab.appendChild(label);
+        tab.appendChild(close);
+        tabsEl.appendChild(tab);
       }
-      return id;
-    })();
+    }
+
+    async function loadActiveHistory() {
+      chatEl.innerHTML = "";
+      try {
+        const res = await fetch(`/history/${activeId}`, {
+          headers: { "X-API-Key": API_KEY },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.messages.length === 0) {
+            addMessage("system", "New conversation");
+          } else {
+            for (const m of data.messages) {
+              addMessage(m.role === "assistant" ? "ai" : "user", m.content);
+            }
+          }
+          return;
+        }
+      } catch {}
+      addMessage("system", "New conversation");
+    }
+
+    async function switchSession(id) {
+      if (id === activeId) return;
+      activeId = id;
+      localStorage.setItem(ACTIVE_KEY, activeId);
+      setAttachment(null);
+      renderTabs();
+      await loadActiveHistory();
+    }
+
+    async function startNewChat() {
+      const id = newSessionId();
+      sessions.push({ id, title: "New chat" });
+      saveSessions();
+      await switchSession(id);
+    }
+
+    async function deleteSession(id) {
+      try {
+        await fetch(`/history/${id}`, {
+          method: "DELETE",
+          headers: { "X-API-Key": API_KEY },
+        });
+      } catch {}
+
+      sessions = sessions.filter((s) => s.id !== id);
+      if (sessions.length === 0) {
+        sessions = [{ id: newSessionId(), title: "New chat" }];
+      }
+      saveSessions();
+
+      if (id === activeId) {
+        activeId = sessions[0].id;
+        localStorage.setItem(ACTIVE_KEY, activeId);
+        renderTabs();
+        await loadActiveHistory();
+      } else {
+        renderTabs();
+      }
+    }
+
+    function updateActiveSessionTitle(text) {
+      const s = sessions.find((x) => x.id === activeId);
+      if (s && s.title === "New chat" && text) {
+        s.title = text.length > 24 ? text.slice(0, 24) + "…" : text;
+        saveSessions();
+        renderTabs();
+      }
+    }
+
+    newChatBtn.addEventListener("click", startNewChat);
 
     // ---------- starfield ----------
     (function initStars() {
@@ -455,6 +705,7 @@
       document.getElementById("stars").appendChild(canvas);
       const ctx = canvas.getContext("2d");
       let stars = [];
+      let comets = [];
       const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
       function resize() {
@@ -473,6 +724,47 @@
         }));
       }
 
+      function maybeSpawnComet() {
+        if (reduceMotion || comets.length >= 2) return;
+        if (Math.random() < 0.004) {
+          comets.push({
+            x: Math.random() * canvas.width * 0.7 + canvas.width * 0.15,
+            y: -30 * devicePixelRatio,
+            vx: (Math.random() - 0.5) * 3 * devicePixelRatio,
+            vy: (4 + Math.random() * 3) * devicePixelRatio,
+            len: (90 + Math.random() * 70) * devicePixelRatio,
+            life: 1,
+          });
+        }
+      }
+
+      function drawComets() {
+        for (let i = comets.length - 1; i >= 0; i--) {
+          const c = comets[i];
+          c.x += c.vx;
+          c.y += c.vy;
+          c.life -= 0.012;
+          if (c.life <= 0 || c.y - c.len > canvas.height) {
+            comets.splice(i, 1);
+            continue;
+          }
+          const angle = Math.atan2(c.vy, c.vx);
+          const tailX = c.x - Math.cos(angle) * c.len;
+          const tailY = c.y - Math.sin(angle) * c.len;
+          const grad = ctx.createLinearGradient(c.x, c.y, tailX, tailY);
+          grad.addColorStop(0, `rgba(255, 255, 255, ${c.life})`);
+          grad.addColorStop(0.4, `rgba(180, 170, 255, ${c.life * 0.5})`);
+          grad.addColorStop(1, "rgba(124, 92, 255, 0)");
+          ctx.strokeStyle = grad;
+          ctx.lineWidth = 2 * devicePixelRatio;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(c.x, c.y);
+          ctx.lineTo(tailX, tailY);
+          ctx.stroke();
+        }
+      }
+
       function draw(t) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         for (const s of stars) {
@@ -487,6 +779,8 @@
             if (s.y < 0) s.y = canvas.height;
           }
         }
+        maybeSpawnComet();
+        drawComets();
         requestAnimationFrame(draw);
       }
 
@@ -634,10 +928,12 @@
 
       const displayText = attachedFilename ? `📎 ${attachedFilename}\n${text}` : text;
       addMessage("user", displayText || `📎 ${attachedFilename}`);
+      updateActiveSessionTitle(text || attachedFilename);
 
       const payload = attachedFilename
         ? `[Attached file: ${attachedFilename}]\n${text}`
         : text;
+      const targetSessionId = activeId;
 
       inputEl.value = "";
       inputEl.style.height = "auto";
@@ -657,10 +953,15 @@
             "Content-Type": "application/json",
             "X-API-Key": API_KEY,
           },
-          body: JSON.stringify({ session_id: sessionId, message: payload }),
+          body: JSON.stringify({ session_id: targetSessionId, message: payload }),
         });
-        typingEl.remove();
+        // If the user switched tabs while this was in flight, the reply
+        // belongs to a chat that's no longer on screen — the typing
+        // indicator and any old messages for it are already gone (cleared
+        // by loadActiveHistory), so don't touch the DOM or resurrect them.
+        if (targetSessionId !== activeId) return;
 
+        typingEl.remove();
         if (!res.ok) {
           const err = await res.text();
           addMessage("system", "Error: " + err);
@@ -669,6 +970,7 @@
         const data = await res.json();
         addMessage("ai", data.reply);
       } catch (e) {
+        if (targetSessionId !== activeId) return;
         typingEl.remove();
         addMessage("system", "Network error: " + e.message);
       } finally {
@@ -679,7 +981,8 @@
 
     sendBtn.addEventListener("click", sendMessage);
 
-    addMessage("system", "Session: " + sessionId);
+    renderTabs();
+    loadActiveHistory();
   </script>
 </body>
 </html>

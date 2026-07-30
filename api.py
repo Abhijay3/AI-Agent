@@ -3,7 +3,7 @@ import os
 import re
 import uuid
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Security, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Path, Request, Security, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.security import APIKeyHeader
@@ -12,11 +12,19 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from agent_core import run_turn
-from memory import REDIS_HOST, load_history, save_history
+from memory import REDIS_HOST, delete_history, load_history, save_history
 from rag import ingest_docs
-from schemas import ChatRequest, ChatResponse, UploadResponse
+from schemas import (
+    ChatRequest,
+    ChatResponse,
+    HistoryMessage,
+    HistoryResponse,
+    UploadResponse,
+)
 from setup_db import ensure_seeded
 from tools import PDF_UPLOAD_DIR
+
+SESSION_ID_PATH = Path(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
@@ -117,3 +125,27 @@ async def upload(request: Request, file: UploadFile) -> UploadResponse:
         raise
 
     return UploadResponse(filename=stored_name)
+
+
+@app.get(
+    "/history/{session_id}",
+    response_model=HistoryResponse,
+    dependencies=[Depends(require_api_key)],
+)
+def get_history(session_id: str = SESSION_ID_PATH) -> HistoryResponse:
+    raw = load_history(session_id)
+    # Stored history includes intermediate tool-call/tool-result messages
+    # (needed by run_turn, not meaningful to show); only surface plain
+    # user/assistant text turns for display.
+    messages = [
+        HistoryMessage(role=m["role"], content=m["content"])
+        for m in raw
+        if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str) and m["content"]
+    ]
+    return HistoryResponse(messages=messages)
+
+
+@app.delete("/history/{session_id}", dependencies=[Depends(require_api_key)])
+def clear_history(session_id: str = SESSION_ID_PATH) -> dict:
+    delete_history(session_id)
+    return {"status": "deleted"}

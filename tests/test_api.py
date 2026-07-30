@@ -105,3 +105,45 @@ def test_upload_sanitizes_path_traversal_in_filename(monkeypatch):
     saved_path = os.path.abspath(os.path.join(PDF_UPLOAD_DIR, filename))
     assert os.path.commonpath([saved_path, PDF_UPLOAD_DIR]) == PDF_UPLOAD_DIR
     assert ".." not in filename
+
+
+def test_history_rejects_missing_api_key(monkeypatch):
+    client = make_client(monkeypatch)
+    res = client.get("/history/s1")
+    assert res.status_code == 401
+
+
+def test_history_filters_to_plain_text_turns(monkeypatch):
+    client = make_client(monkeypatch)
+    monkeypatch.setattr(
+        api,
+        "load_history",
+        lambda session_id: [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": None, "tool_calls": [{"id": "x"}]},
+            {"role": "tool", "tool_call_id": "x", "content": "42"},
+            {"role": "assistant", "content": "The answer is 42."},
+        ],
+    )
+    res = client.get("/history/s1", headers={"X-API-Key": "test-app-key"})
+    assert res.status_code == 200
+    assert res.json() == {
+        "messages": [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "The answer is 42."},
+        ]
+    }
+
+
+def test_delete_history_requires_auth_and_clears(monkeypatch):
+    client = make_client(monkeypatch)
+    calls = []
+    monkeypatch.setattr(api, "delete_history", lambda session_id: calls.append(session_id))
+
+    res = client.delete("/history/s1")
+    assert res.status_code == 401
+    assert calls == []
+
+    res = client.delete("/history/s1", headers={"X-API-Key": "test-app-key"})
+    assert res.status_code == 200
+    assert calls == ["s1"]

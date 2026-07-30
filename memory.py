@@ -23,3 +23,7 @@ def save_history(session_id: str, messages: list) -> None:
         for m in messages
     ]
     redis_client.set(f"chat:{session_id}", json.dumps(serializable))
+
+
+def delete_history(session_id: str) -> None:
+    redis_client.delete(f"chat:{session_id}")
