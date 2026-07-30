@@ -8,6 +8,8 @@ from rag import retrieve
 from tools import (
     browse_webpage,
     calculator,
+    check_order_status,
+    create_support_ticket,
     get_weather,
     read_pdf,
     run_sql_query,
@@ -80,6 +82,48 @@ tools = [
     {
         "type": "function",
         "function": {
+            "name": "check_order_status",
+            "description": (
+                "Look up the status of a customer's order by order ID and the "
+                "email address it was placed under. Both must match."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_id": {"type": "integer"},
+                    "email": {"type": "string"},
+                },
+                "required": ["order_id", "email"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_support_ticket",
+            "description": (
+                "File a support ticket for an issue the agent can't resolve directly "
+                "(e.g. a complaint, a return request, a bug report). Only use this "
+                "after collecting the customer's name, email, and a clear description "
+                "of the issue."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "email": {"type": "string"},
+                    "subject": {"type": "string"},
+                    "description": {"type": "string"},
+                },
+                "required": ["name", "email", "subject", "description"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "web_search",
             "description": "Search the web for current information not known from training data.",
             "parameters": {
@@ -131,6 +175,8 @@ TOOL_FUNCTIONS = {
     "web_search": web_search,
     "read_pdf": read_pdf,
     "browse_webpage": browse_webpage,
+    "check_order_status": check_order_status,
+    "create_support_ticket": create_support_ticket,
 }
 
 
@@ -161,7 +207,13 @@ def run_turn(messages: list) -> str:
             "You are a helpful customer support agent for Acme Corp. Use the "
             "following company policy documents and the available tools to "
             "answer customer questions accurately. If the documents aren't "
-            "relevant to the question, ignore them.\n\n" + context_text
+            "relevant to the question, ignore them.\n\n"
+            "You can look up real order status with check_order_status, and "
+            "file a real support ticket with create_support_ticket. "
+            "create_support_ticket only needs a name, email, subject, and "
+            "description — nothing else. Once you have those four things, "
+            "file the ticket immediately; don't ask for an order ID or any "
+            "other detail it doesn't require.\n\n" + context_text
         ),
     }
 

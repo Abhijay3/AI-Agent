@@ -93,6 +93,47 @@ def run_sql_query(query: str) -> str:
     )
 
 
+def check_order_status(order_id: int, email: str) -> str:
+    conn = sqlite3.connect("file:store.db?mode=ro", uri=True)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT product_name, quantity, status, order_date FROM orders "
+            "WHERE id = ? AND customer_email = ?",
+            (order_id, email),
+        )
+        row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if row is None:
+        # Deliberately vague: don't reveal whether the order exists under a
+        # different email, since that would let one caller enumerate orders.
+        return f"No order found with ID {order_id} for that email address."
+
+    product_name, quantity, status, order_date = row
+    return (
+        f"Order #{order_id}: {quantity}x {product_name}, "
+        f"status: {status}, ordered on {order_date}."
+    )
+
+
+def create_support_ticket(name: str, email: str, subject: str, description: str) -> str:
+    conn = sqlite3.connect("store.db")
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO tickets (name, email, subject, description) VALUES (?, ?, ?, ?)",
+            (name, email, subject, description),
+        )
+        ticket_id = cur.lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+
+    return f"Support ticket #{ticket_id} created. Our team will follow up at {email}."
+
+
 def read_pdf(path: str) -> str:
     # Resolve against the uploads dir and make sure the result doesn't
     # escape it (blocks "../../.env"-style traversal and absolute paths).
