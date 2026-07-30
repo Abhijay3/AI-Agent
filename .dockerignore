@@ -1,0 +1,10 @@
+venv/
+venv-mcp/
+__pycache__/
+*.pyc
+chroma_db/
+chat_history.json
+.env
+.git/
+sample.pdf
+sample.txt

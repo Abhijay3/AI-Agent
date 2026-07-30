@@ -1,0 +1,5 @@
+Acme Corp Q3 Report
+
+Revenue grew 22% year over year to $4.2 million.
+The engineering team shipped 3 major product releases.
+Customer churn dropped from 8% to 5%.

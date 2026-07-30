@@ -1,0 +1,7 @@
+Acme Corp Expense Reimbursement Policy
+
+Employees can claim reimbursement for business-related travel, meals, and software subscriptions.
+All expense claims must be submitted within 30 days of the expense with an itemized receipt attached.
+Meal reimbursement is capped at $40 per day during business travel.
+Claims over $500 require pre-approval from a department head before the expense is incurred.
+Reimbursements are processed within 10 business days of approval.
