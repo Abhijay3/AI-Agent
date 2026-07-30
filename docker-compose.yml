@@ -19,6 +19,7 @@ services:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8000}
     volumes:
       - db-data:/app/data
+      - uploads-data:/app/uploads
     depends_on:
       - redis
     restart: unless-stopped
@@ -26,3 +27,4 @@ services:
 volumes:
   redis-data:
   db-data:
+  uploads-data:

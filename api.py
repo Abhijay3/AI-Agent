@@ -1,7 +1,9 @@
 import logging
 import os
+import re
+import uuid
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Security
+from fastapi import Depends, FastAPI, HTTPException, Request, Security, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.security import APIKeyHeader
@@ -12,8 +14,11 @@ from slowapi.util import get_remote_address
 from agent_core import run_turn
 from memory import REDIS_HOST, load_history, save_history
 from rag import ingest_docs
-from schemas import ChatRequest, ChatResponse
+from schemas import ChatRequest, ChatResponse, UploadResponse
 from setup_db import ensure_seeded
+from tools import PDF_UPLOAD_DIR
+
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 logging.basicConfig(
     level=logging.INFO,
@@ -83,3 +88,32 @@ def chat(request: Request, body: ChatRequest) -> ChatResponse:
 
     save_history(body.session_id, messages)
     return ChatResponse(reply=reply)
+
+
+@app.post("/upload", response_model=UploadResponse, dependencies=[Depends(require_api_key)])
+@limiter.limit("10/minute")
+async def upload(request: Request, file: UploadFile) -> UploadResponse:
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+
+    # Strip any path components and unsafe characters, then prefix with a
+    # random id so two uploads with the same name can't collide or overwrite
+    # each other.
+    safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(file.filename))
+    stored_name = f"{uuid.uuid4().hex[:8]}_{safe_name}"
+    dest_path = os.path.join(PDF_UPLOAD_DIR, stored_name)
+
+    size = 0
+    try:
+        with open(dest_path, "wb") as out:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="File too large (max 10MB).")
+                out.write(chunk)
+    except HTTPException:
+        if os.path.exists(dest_path):
+            os.remove(dest_path)
+        raise
+
+    return UploadResponse(filename=stored_name)

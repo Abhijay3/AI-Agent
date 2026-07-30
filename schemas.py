@@ -8,3 +8,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+
+
+class UploadResponse(BaseModel):
+    filename: str

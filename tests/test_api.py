@@ -1,6 +1,18 @@
+import glob
+import os
+
+import pytest
 from fastapi.testclient import TestClient
 
 import api
+from tools import PDF_UPLOAD_DIR
+
+
+@pytest.fixture(autouse=True)
+def cleanup_test_uploads():
+    yield
+    for path in glob.glob(os.path.join(PDF_UPLOAD_DIR, "*_test_*.pdf")):
+        os.remove(path)
 
 
 def make_client(monkeypatch):
@@ -50,3 +62,46 @@ def test_index_injects_api_key(monkeypatch):
     assert res.status_code == 200
     assert "test-app-key" in res.text
     assert "__APP_API_KEY__" not in res.text
+
+
+def test_upload_rejects_missing_api_key(monkeypatch):
+    client = make_client(monkeypatch)
+    res = client.post("/upload", files={"file": ("test_doc.pdf", b"%PDF-1.4 fake", "application/pdf")})
+    assert res.status_code == 401
+
+
+def test_upload_rejects_non_pdf(monkeypatch):
+    client = make_client(monkeypatch)
+    res = client.post(
+        "/upload",
+        headers={"X-API-Key": "test-app-key"},
+        files={"file": ("test_doc.txt", b"not a pdf", "text/plain")},
+    )
+    assert res.status_code == 400
+
+
+def test_upload_accepts_pdf_and_saves_it(monkeypatch):
+    client = make_client(monkeypatch)
+    res = client.post(
+        "/upload",
+        headers={"X-API-Key": "test-app-key"},
+        files={"file": ("test_report.pdf", b"%PDF-1.4 fake content", "application/pdf")},
+    )
+    assert res.status_code == 200
+    filename = res.json()["filename"]
+    assert filename.endswith("_test_report.pdf")
+    assert os.path.exists(os.path.join(PDF_UPLOAD_DIR, filename))
+
+
+def test_upload_sanitizes_path_traversal_in_filename(monkeypatch):
+    client = make_client(monkeypatch)
+    res = client.post(
+        "/upload",
+        headers={"X-API-Key": "test-app-key"},
+        files={"file": ("../../test_evil.pdf", b"%PDF-1.4 fake", "application/pdf")},
+    )
+    assert res.status_code == 200
+    filename = res.json()["filename"]
+    saved_path = os.path.abspath(os.path.join(PDF_UPLOAD_DIR, filename))
+    assert os.path.commonpath([saved_path, PDF_UPLOAD_DIR]) == PDF_UPLOAD_DIR
+    assert ".." not in filename
