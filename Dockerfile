@@ -2,9 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Keep browser binaries under /app so they end up owned by appuser below,
-# instead of the default /root/.cache which a non-root user can't read.
+# Keep browser binaries and the embedding model cache under /app so they
+# end up owned by appuser below, instead of /root's home (which a non-root
+# user can't read, and Path.home()-based caches like chromadb's default to).
 ENV PLAYWRIGHT_BROWSERS_PATH=/app/.playwright-browsers
+ENV HOME=/app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -20,7 +22,7 @@ COPY static/ ./static/
 COPY uploads/ ./uploads/
 COPY store.db ./store.db
 
-RUN useradd --create-home --uid 1000 appuser \
+RUN useradd --no-create-home --home-dir /app --uid 1000 appuser \
     && chown -R appuser:appuser /app
 USER appuser
 
