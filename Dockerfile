@@ -16,13 +16,16 @@ RUN playwright install --with-deps chromium
 # doesn't have to fetch it over the network on first request (was ~75s).
 RUN python -c "from chromadb.utils.embedding_functions import DefaultEmbeddingFunction; DefaultEmbeddingFunction()(['warm'])"
 
-COPY agent_core.py api.py memory.py rag.py schemas.py tools.py ./
+COPY agent_core.py api.py memory.py rag.py schemas.py setup_db.py tools.py ./
 COPY docs/ ./docs/
 COPY static/ ./static/
 COPY uploads/ ./uploads/
-COPY store.db ./store.db
 
-RUN useradd --no-create-home --home-dir /app --uid 1000 appuser \
+# store.db is deliberately NOT copied in: it's seeded at startup (see
+# setup_db.ensure_seeded, called from api.py) into /app/data, which is
+# volume-mounted in docker-compose.yml so orders/tickets survive rebuilds.
+RUN mkdir -p /app/data \
+    && useradd --no-create-home --home-dir /app --uid 1000 appuser \
     && chown -R appuser:appuser /app
 USER appuser
 

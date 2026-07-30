@@ -9,6 +9,8 @@ from playwright.sync_api import sync_playwright
 from pypdf import PdfReader
 from tavily import TavilyClient
 
+from setup_db import DB_PATH
+
 PDF_UPLOAD_DIR = os.path.abspath("uploads")
 
 
@@ -72,7 +74,7 @@ def run_sql_query(query: str) -> str:
     # Open read-only at the OS level, and restrict what the query can touch
     # via an authorizer, so a crafted query can't write, attach another DB,
     # or read tables outside 'products' even if it slips past the prefix check.
-    conn = sqlite3.connect("file:store.db?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
     conn.set_authorizer(_sql_authorizer)
     try:
         cur = conn.cursor()
@@ -94,7 +96,7 @@ def run_sql_query(query: str) -> str:
 
 
 def check_order_status(order_id: int, email: str) -> str:
-    conn = sqlite3.connect("file:store.db?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
     try:
         cur = conn.cursor()
         cur.execute(
@@ -119,7 +121,7 @@ def check_order_status(order_id: int, email: str) -> str:
 
 
 def create_support_ticket(name: str, email: str, subject: str, description: str) -> str:
-    conn = sqlite3.connect("store.db")
+    conn = sqlite3.connect(DB_PATH)
     try:
         cur = conn.cursor()
         cur.execute(

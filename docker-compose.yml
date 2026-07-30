@@ -12,13 +12,17 @@ services:
       - "8000:8000"
     environment:
       - REDIS_HOST=redis
+      - DB_PATH=/app/data/store.db
       - GROQ_API_KEY=${GROQ_API_KEY}
       - TAVILY_API_KEY=${TAVILY_API_KEY}
       - APP_API_KEY=${APP_API_KEY}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8000}
+    volumes:
+      - db-data:/app/data
     depends_on:
       - redis
     restart: unless-stopped
 
 volumes:
   redis-data:
+  db-data:

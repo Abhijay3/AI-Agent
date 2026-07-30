@@ -13,6 +13,7 @@ from agent_core import run_turn
 from memory import REDIS_HOST, load_history, save_history
 from rag import ingest_docs
 from schemas import ChatRequest, ChatResponse
+from setup_db import ensure_seeded
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,6 +48,7 @@ def require_api_key(key: str = Security(api_key_header)) -> None:
 @app.on_event("startup")
 def seed_knowledge_base() -> None:
     ingest_docs()
+    ensure_seeded()
 
 
 @app.get("/health")
