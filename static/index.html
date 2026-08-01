@@ -95,14 +95,14 @@
 
   /* ---------- header ---------- */
   header {
-    padding: 16px 24px;
+    padding: 14px 24px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     background: rgba(8, 5, 20, 0.55);
     backdrop-filter: blur(16px);
     border-bottom: 1px solid var(--surface-border);
-    z-index: 2;
+    z-index: 3;
   }
   .brand {
     display: flex;
@@ -158,16 +158,17 @@
 
   /* ---------- ticker ---------- */
   #ticker {
-    z-index: 2;
+    z-index: 3;
     overflow: hidden;
     background: rgba(124, 92, 255, 0.06);
     border-bottom: 1px solid var(--surface-border);
     padding: 7px 0;
+    flex-shrink: 0;
   }
   #tickerTrack {
     display: flex;
     width: max-content;
-    animation: ticker-scroll 32s linear infinite;
+    animation: ticker-scroll 34s linear infinite;
   }
   .tickerGroup {
     display: flex;
@@ -189,66 +190,100 @@
     #tickerTrack { animation: none; }
   }
 
-  /* ---------- session tabs ---------- */
-  #tabBar {
-    z-index: 2;
+  /* ---------- app body: sidebar + main ---------- */
+  #appBody {
+    flex: 1;
     display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 20px;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #sidebar {
+    width: 250px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 10px;
     background: rgba(8, 5, 20, 0.4);
-    border-bottom: 1px solid var(--surface-border);
+    border-right: 1px solid var(--surface-border);
+    overflow-y: auto;
+    z-index: 2;
   }
-  #tabs {
+
+  #newChatBtn {
     display: flex;
+    align-items: center;
+    justify-content: center;
     gap: 6px;
-    overflow-x: auto;
-    scrollbar-width: none;
+    padding: 9px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(124, 92, 255, 0.4);
+    background: rgba(124, 92, 255, 0.12);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    flex-shrink: 0;
   }
-  #tabs::-webkit-scrollbar { display: none; }
-  .tab {
+  #newChatBtn:hover { background: rgba(124, 92, 255, 0.22); }
+
+  #chatList {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    overflow-y: auto;
+  }
+
+  .chat-item {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 8px 6px 12px;
-    border-radius: 10px;
-    background: var(--surface);
-    border: 1px solid transparent;
-    font-size: 12.5px;
+    padding: 9px 8px 9px 12px;
+    border-radius: 9px;
+    font-size: 13px;
     color: var(--text-dim);
     cursor: pointer;
     white-space: nowrap;
-    flex-shrink: 0;
-    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    transition: background 0.15s, color 0.15s;
   }
-  .tab:hover { background: var(--surface-hover); }
-  .tab.active {
+  .chat-item:hover { background: var(--surface-hover); }
+  .chat-item.active {
     background: rgba(124, 92, 255, 0.15);
-    border-color: rgba(124, 92, 255, 0.4);
     color: var(--text);
   }
-  .tab-label {
-    max-width: 160px;
+  .chat-item-label {
+    flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .tab-close {
+  .chat-item-close {
     background: none;
     border: none;
     color: var(--text-faint);
     cursor: pointer;
     font-size: 11px;
-    padding: 2px 4px;
+    padding: 3px 5px;
     border-radius: 6px;
     line-height: 1;
-  }
-  .tab-close:hover { color: var(--danger); background: rgba(255, 107, 129, 0.12); }
-  #newChatBtn {
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s, background 0.15s;
     flex-shrink: 0;
-    width: 30px; height: 30px;
-    border-radius: 10px;
-    font-size: 16px;
-    font-weight: 600;
+  }
+  .chat-item:hover .chat-item-close,
+  .chat-item.active .chat-item-close { opacity: 1; }
+  .chat-item-close:hover { color: var(--danger); background: rgba(255, 107, 129, 0.12); }
+
+  #sidebar::-webkit-scrollbar, #chatList::-webkit-scrollbar { width: 6px; }
+  #sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 6px; }
+
+  #mainArea {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
   /* ---------- chat area ---------- */
@@ -258,9 +293,9 @@
     z-index: 1;
   }
   #chat {
-    max-width: 760px;
+    max-width: 780px;
     margin: 0 auto;
-    padding: 28px 20px 20px;
+    padding: 28px 24px 20px;
     display: flex;
     flex-direction: column;
     gap: 18px;
@@ -303,11 +338,10 @@
   }
 
   .bubble {
-    max-width: 66ch;
+    max-width: 70ch;
     padding: 12px 15px;
     border-radius: var(--radius);
     line-height: 1.55;
-    white-space: pre-wrap;
     word-wrap: break-word;
     font-size: 14.5px;
   }
@@ -316,6 +350,7 @@
     color: #0b0620;
     font-weight: 500;
     border-bottom-right-radius: 4px;
+    white-space: pre-wrap;
   }
   .row.ai .bubble {
     background: var(--surface);
@@ -328,34 +363,126 @@
     color: var(--text-faint);
     font-size: 12px;
     padding: 4px 10px;
+    white-space: pre-wrap;
+  }
+
+  /* ---------- markdown rendering inside AI bubbles ---------- */
+  .bubble > *:first-child { margin-top: 0; }
+  .bubble > *:last-child { margin-bottom: 0; }
+  .bubble p { margin: 8px 0; }
+  .bubble h1, .bubble h2, .bubble h3, .bubble h4 {
+    margin: 14px 0 6px;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+  .bubble h1 { font-size: 1.25em; }
+  .bubble h2 { font-size: 1.15em; }
+  .bubble h3 { font-size: 1.05em; }
+  .bubble h4 { font-size: 1em; }
+  .bubble ul, .bubble ol {
+    margin: 8px 0;
+    padding-left: 22px;
+  }
+  .bubble li { margin: 3px 0; }
+  .bubble blockquote {
+    margin: 8px 0;
+    padding: 4px 12px;
+    border-left: 3px solid var(--accent-1);
+    color: var(--text-dim);
+  }
+  .bubble hr {
+    border: none;
+    border-top: 1px solid var(--surface-border);
+    margin: 12px 0;
   }
   .bubble code {
     background: rgba(0, 0, 0, 0.35);
     padding: 1px 5px;
     border-radius: 5px;
     font-size: 0.9em;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
   .bubble a { color: inherit; text-decoration: underline; text-decoration-color: rgba(255,255,255,0.4); }
 
-  .typing {
-    align-self: flex-start;
-    display: flex;
-    gap: 4px;
-    padding: 14px 15px;
-    background: var(--surface);
-    border: 1px solid var(--surface-border);
-    border-radius: var(--radius);
-    border-bottom-left-radius: 4px;
-    margin-left: 38px;
+  .table-wrap { overflow-x: auto; margin: 8px 0; }
+  .bubble table {
+    border-collapse: collapse;
+    font-size: 0.92em;
+    width: 100%;
   }
-  .typing span {
+  .bubble th, .bubble td {
+    border: 1px solid var(--surface-border);
+    padding: 6px 10px;
+    text-align: left;
+  }
+  .bubble th { background: rgba(255, 255, 255, 0.05); font-weight: 600; }
+
+  .code-block {
+    margin: 10px 0;
+    border: 1px solid var(--surface-border);
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.3);
+  }
+  .code-block-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid var(--surface-border);
+    font-size: 11px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .copy-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: none;
+    color: var(--text-dim);
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .copy-btn:hover { background: var(--surface-hover); color: var(--text); }
+  .code-block pre {
+    margin: 0;
+    padding: 12px 14px;
+    overflow-x: auto;
+  }
+  .code-block code {
+    background: none;
+    padding: 0;
+    font-size: 12.5px;
+    line-height: 1.5;
+    white-space: pre;
+  }
+
+  /* ---------- status / tool-activity bubble ---------- */
+  .status-bubble {
+    color: var(--text-dim);
+    font-size: 13.5px;
+    display: flex;
+    align-items: center;
+    min-height: 20px;
+  }
+  .tool-status { animation: fade-pulse 1.6s ease-in-out infinite; }
+  @keyframes fade-pulse {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+  }
+  .typing-dots { display: inline-flex; gap: 4px; }
+  .typing-dots span {
     width: 6px; height: 6px;
     border-radius: 50%;
     background: var(--text-dim);
     animation: bounce 1.2s infinite ease-in-out;
   }
-  .typing span:nth-child(2) { animation-delay: 0.15s; }
-  .typing span:nth-child(3) { animation-delay: 0.3s; }
+  .typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.3s; }
   @keyframes bounce {
     0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
     30% { transform: translateY(-4px); opacity: 1; }
@@ -364,11 +491,12 @@
   /* ---------- input bar ---------- */
   #inputArea {
     z-index: 2;
-    padding: 14px 20px 20px;
+    padding: 14px 24px 20px;
     background: linear-gradient(0deg, rgba(5,4,13,0.9) 40%, transparent);
+    flex-shrink: 0;
   }
   #inputInner {
-    max-width: 760px;
+    max-width: 780px;
     margin: 0 auto;
   }
 
@@ -479,6 +607,10 @@
     background: rgba(255, 255, 255, 0.12);
     border-radius: 8px;
   }
+
+  @media (max-width: 720px) {
+    #sidebar { position: fixed; inset: 0 auto 0 0; height: 100%; }
+  }
 </style>
 </head>
 <body>
@@ -507,6 +639,7 @@
         <span>🔎 Real-time web search</span>
         <span>🧮 Built-in calculator</span>
         <span>🌦️ Live weather lookups</span>
+        <span>⚡ Streaming responses</span>
       </div>
       <div class="tickerGroup" aria-hidden="true">
         <span>🟢 Live order status lookups</span>
@@ -515,36 +648,44 @@
         <span>🔎 Real-time web search</span>
         <span>🧮 Built-in calculator</span>
         <span>🌦️ Live weather lookups</span>
+        <span>⚡ Streaming responses</span>
       </div>
     </div>
   </div>
 
-  <div id="tabBar">
-    <div id="tabs"></div>
-    <button id="newChatBtn" type="button" class="icon-btn" title="New chat">+</button>
-  </div>
+  <div id="appBody">
+    <aside id="sidebar">
+      <button id="newChatBtn" type="button">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New chat
+      </button>
+      <div id="chatList"></div>
+    </aside>
 
-  <div id="chatWrap">
-    <div id="chat"></div>
-  </div>
+    <main id="mainArea">
+      <div id="chatWrap">
+        <div id="chat"></div>
+      </div>
 
-  <div id="inputArea">
-    <div id="inputInner">
-      <div id="attachChip">
-        <span id="attachName"></span>
-        <button id="attachRemove" type="button" title="Remove attachment">✕</button>
+      <div id="inputArea">
+        <div id="inputInner">
+          <div id="attachChip">
+            <span id="attachName"></span>
+            <button id="attachRemove" type="button" title="Remove attachment">✕</button>
+          </div>
+          <div id="inputBar">
+            <button id="attachBtn" type="button" class="icon-btn" title="Attach a PDF">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+            <textarea id="messageInput" rows="1" placeholder="Ask anything…" autocomplete="off"></textarea>
+            <button id="sendBtn" type="button" class="icon-btn" title="Send">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+            </button>
+          </div>
+          <input type="file" id="fileInput" accept="application/pdf" hidden />
+        </div>
       </div>
-      <div id="inputBar">
-        <button id="attachBtn" type="button" class="icon-btn" title="Attach a PDF">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-        </button>
-        <textarea id="messageInput" rows="1" placeholder="Ask anything…" autocomplete="off"></textarea>
-        <button id="sendBtn" type="button" class="icon-btn" title="Send">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
-        </button>
-      </div>
-      <input type="file" id="fileInput" accept="application/pdf" hidden />
-    </div>
+    </main>
   </div>
 
   <script>
@@ -561,10 +702,21 @@
     const attachChip = document.getElementById("attachChip");
     const attachName = document.getElementById("attachName");
     const attachRemove = document.getElementById("attachRemove");
-    const tabsEl = document.getElementById("tabs");
+    const chatListEl = document.getElementById("chatList");
     const newChatBtn = document.getElementById("newChatBtn");
 
     let attachedFilename = null;
+
+    const TOOL_LABELS = {
+      calculator: "🧮 Calculating…",
+      get_weather: "🌦️ Checking the weather…",
+      run_sql_query: "📦 Checking inventory…",
+      web_search: "🔍 Searching the web…",
+      read_pdf: "📄 Reading the PDF…",
+      browse_webpage: "🌐 Browsing the page…",
+      check_order_status: "📦 Looking up your order…",
+      create_support_ticket: "🎫 Filing your ticket…",
+    };
 
     // ---------- session (multi-chat) management ----------
     const SESSIONS_KEY = "chat_sessions";
@@ -603,20 +755,20 @@
     saveSessions();
     localStorage.setItem(ACTIVE_KEY, activeId);
 
-    function renderTabs() {
-      tabsEl.innerHTML = "";
+    function renderChatList() {
+      chatListEl.innerHTML = "";
       for (const s of sessions) {
-        const tab = document.createElement("div");
-        tab.className = "tab" + (s.id === activeId ? " active" : "");
+        const item = document.createElement("div");
+        item.className = "chat-item" + (s.id === activeId ? " active" : "");
 
         const label = document.createElement("span");
-        label.className = "tab-label";
+        label.className = "chat-item-label";
         label.textContent = s.title;
-        label.addEventListener("click", () => switchSession(s.id));
+        item.addEventListener("click", () => switchSession(s.id));
 
         const close = document.createElement("button");
         close.type = "button";
-        close.className = "tab-close";
+        close.className = "chat-item-close";
         close.textContent = "✕";
         close.title = "Delete this chat";
         close.addEventListener("click", (e) => {
@@ -624,9 +776,9 @@
           deleteSession(s.id);
         });
 
-        tab.appendChild(label);
-        tab.appendChild(close);
-        tabsEl.appendChild(tab);
+        item.appendChild(label);
+        item.appendChild(close);
+        chatListEl.appendChild(item);
       }
     }
 
@@ -656,7 +808,7 @@
       activeId = id;
       localStorage.setItem(ACTIVE_KEY, activeId);
       setAttachment(null);
-      renderTabs();
+      renderChatList();
       await loadActiveHistory();
     }
 
@@ -684,19 +836,19 @@
       if (id === activeId) {
         activeId = sessions[0].id;
         localStorage.setItem(ACTIVE_KEY, activeId);
-        renderTabs();
+        renderChatList();
         await loadActiveHistory();
       } else {
-        renderTabs();
+        renderChatList();
       }
     }
 
     function updateActiveSessionTitle(text) {
       const s = sessions.find((x) => x.id === activeId);
       if (s && s.title === "New chat" && text) {
-        s.title = text.length > 24 ? text.slice(0, 24) + "…" : text;
+        s.title = text.length > 28 ? text.slice(0, 28) + "…" : text;
         saveSessions();
-        renderTabs();
+        renderChatList();
       }
     }
 
@@ -795,7 +947,7 @@
       requestAnimationFrame(draw);
     })();
 
-    // ---------- formatting ----------
+    // ---------- markdown rendering ----------
     function escapeHtml(str) {
       return str
         .replace(/&/g, "&amp;")
@@ -803,13 +955,141 @@
         .replace(/>/g, "&gt;");
     }
 
-    function formatText(text) {
+    function renderInline(text) {
       let out = escapeHtml(text);
       out = out.replace(/`([^`]+)`/g, "<code>$1</code>");
       out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-      out = out.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+      out = out.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, "<em>$1</em>");
+      out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      out = out.replace(/(?<!href=")(?<!>)(https?:\/\/[^\s<")]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
       return out;
     }
+
+    function renderMarkdown(raw) {
+      const lines = raw.replace(/\r\n/g, "\n").split("\n");
+      let html = "";
+      let i = 0;
+      const paraBuf = [];
+
+      function flushParagraph() {
+        if (paraBuf.length) {
+          html += `<p>${renderInline(paraBuf.join(" "))}</p>`;
+          paraBuf.length = 0;
+        }
+      }
+
+      while (i < lines.length) {
+        const line = lines[i];
+
+        const fenceMatch = line.match(/^```(\w*)\s*$/);
+        if (fenceMatch) {
+          flushParagraph();
+          const lang = fenceMatch[1] || "text";
+          const codeLines = [];
+          i++;
+          while (i < lines.length && !/^```\s*$/.test(lines[i])) {
+            codeLines.push(lines[i]);
+            i++;
+          }
+          i++;
+          const codeId = "code-" + Math.random().toString(36).slice(2, 9);
+          html += `<div class="code-block"><div class="code-block-header"><span>${escapeHtml(lang)}</span><button type="button" class="copy-btn" data-copy-target="${codeId}">Copy</button></div><pre><code id="${codeId}">${escapeHtml(codeLines.join("\n"))}</code></pre></div>`;
+          continue;
+        }
+
+        if (/\|/.test(line) && i + 1 < lines.length && /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(lines[i + 1])) {
+          flushParagraph();
+          const splitRow = (row) =>
+            row.split("|").map((c) => c.trim()).filter((c, idx, arr) => !(c === "" && (idx === 0 || idx === arr.length - 1)));
+          const headerCells = splitRow(line);
+          i += 2;
+          const rows = [];
+          while (i < lines.length && /\|/.test(lines[i]) && lines[i].trim() !== "") {
+            rows.push(splitRow(lines[i]));
+            i++;
+          }
+          html += "<div class=\"table-wrap\"><table><thead><tr>" +
+            headerCells.map((c) => `<th>${renderInline(c)}</th>`).join("") +
+            "</tr></thead><tbody>" +
+            rows.map((r) => "<tr>" + r.map((c) => `<td>${renderInline(c)}</td>`).join("") + "</tr>").join("") +
+            "</tbody></table></div>";
+          continue;
+        }
+
+        const headerMatch = line.match(/^(#{1,4})\s+(.*)$/);
+        if (headerMatch) {
+          flushParagraph();
+          const level = Math.min(headerMatch[1].length + 1, 4);
+          html += `<h${level}>${renderInline(headerMatch[2])}</h${level}>`;
+          i++;
+          continue;
+        }
+
+        if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) {
+          flushParagraph();
+          html += "<hr>";
+          i++;
+          continue;
+        }
+
+        if (/^\s*>\s?/.test(line)) {
+          flushParagraph();
+          const quoteLines = [];
+          while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+            quoteLines.push(lines[i].replace(/^\s*>\s?/, ""));
+            i++;
+          }
+          html += `<blockquote>${renderInline(quoteLines.join(" "))}</blockquote>`;
+          continue;
+        }
+
+        if (/^\s*[-*]\s+/.test(line)) {
+          flushParagraph();
+          const items = [];
+          while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+            items.push(lines[i].replace(/^\s*[-*]\s+/, ""));
+            i++;
+          }
+          html += "<ul>" + items.map((it) => `<li>${renderInline(it)}</li>`).join("") + "</ul>";
+          continue;
+        }
+
+        if (/^\s*\d+[.)]\s+/.test(line)) {
+          flushParagraph();
+          const items = [];
+          while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) {
+            items.push(lines[i].replace(/^\s*\d+[.)]\s+/, ""));
+            i++;
+          }
+          html += "<ol>" + items.map((it) => `<li>${renderInline(it)}</li>`).join("") + "</ol>";
+          continue;
+        }
+
+        if (line.trim() === "") {
+          flushParagraph();
+          i++;
+          continue;
+        }
+
+        paraBuf.push(line.trim());
+        i++;
+      }
+      flushParagraph();
+      return html;
+    }
+
+    // copy-to-clipboard for code blocks (event delegation, bubbles are created dynamically)
+    chatEl.addEventListener("click", (e) => {
+      const btn = e.target.closest(".copy-btn");
+      if (!btn) return;
+      const codeEl = document.getElementById(btn.dataset.copyTarget);
+      if (!codeEl) return;
+      navigator.clipboard.writeText(codeEl.textContent).then(() => {
+        const original = btn.textContent;
+        btn.textContent = "Copied!";
+        setTimeout(() => { btn.textContent = original; }, 1500);
+      });
+    });
 
     function addMessage(role, text) {
       const row = document.createElement("div");
@@ -824,7 +1104,7 @@
 
       const bubble = document.createElement("div");
       bubble.className = "bubble";
-      bubble.innerHTML = formatText(text);
+      bubble.innerHTML = role === "ai" ? renderMarkdown(text) : escapeHtml(text);
       row.appendChild(bubble);
 
       chatEl.appendChild(row);
@@ -927,7 +1207,7 @@
       if (file) uploadFile(file);
     });
 
-    // ---------- send ----------
+    // ---------- send (streaming) ----------
     async function sendMessage() {
       const text = inputEl.value.trim();
       if (!text && !attachedFilename) return;
@@ -946,14 +1226,27 @@
       setAttachment(null);
       sendBtn.disabled = true;
 
-      const typingEl = document.createElement("div");
-      typingEl.className = "typing";
-      typingEl.innerHTML = "<span></span><span></span><span></span>";
-      chatEl.appendChild(typingEl);
+      // placeholder AI row: starts as "thinking" dots, becomes tool-status
+      // text, then morphs into the streamed markdown answer.
+      const statusRow = document.createElement("div");
+      statusRow.className = "row ai";
+      const avatar = document.createElement("div");
+      avatar.className = "avatar ai";
+      avatar.textContent = "A";
+      const bubble = document.createElement("div");
+      bubble.className = "bubble status-bubble";
+      bubble.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
+      statusRow.appendChild(avatar);
+      statusRow.appendChild(bubble);
+      chatEl.appendChild(statusRow);
       chatWrapEl.scrollTop = chatWrapEl.scrollHeight;
 
+      let answerText = "";
+      let answerStarted = false;
+      let settled = false;
+
       try {
-        const res = await fetch("/chat", {
+        const res = await fetch("/chat/stream", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -961,24 +1254,74 @@
           },
           body: JSON.stringify({ session_id: targetSessionId, message: payload }),
         });
-        // If the user switched tabs while this was in flight, the reply
-        // belongs to a chat that's no longer on screen — the typing
-        // indicator and any old messages for it are already gone (cleared
-        // by loadActiveHistory), so don't touch the DOM or resurrect them.
-        if (targetSessionId !== activeId) return;
 
-        typingEl.remove();
-        if (!res.ok) {
+        if (!res.ok || !res.body) {
           const err = await res.text();
-          addMessage("system", "Error: " + err);
+          if (targetSessionId === activeId) {
+            statusRow.remove();
+            addMessage("system", "Error: " + err);
+          }
           return;
         }
-        const data = await res.json();
-        addMessage("ai", data.reply);
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n");
+          buffer = parts.pop();
+
+          for (const line of parts) {
+            if (!line.trim()) continue;
+            let evt;
+            try {
+              evt = JSON.parse(line);
+            } catch {
+              continue;
+            }
+
+            if (targetSessionId !== activeId) continue; // tab switched mid-stream; keep draining, skip UI
+
+            if (evt.event === "tool_call") {
+              bubble.className = "bubble status-bubble";
+              bubble.innerHTML = `<span class="tool-status">${TOOL_LABELS[evt.tool] || "⚙️ Working…"}</span>`;
+            } else if (evt.event === "token") {
+              if (!answerStarted) {
+                answerStarted = true;
+                bubble.className = "bubble";
+              }
+              answerText += evt.text;
+              bubble.innerHTML = renderMarkdown(answerText);
+              chatWrapEl.scrollTop = chatWrapEl.scrollHeight;
+            } else if (evt.event === "content_replace") {
+              // Backend detected a malformed response after the fact
+              // (e.g. a leaked pseudo tool-call) and swapped in a clean
+              // message — discard whatever had streamed in so far.
+              answerStarted = true;
+              answerText = evt.text;
+              bubble.className = "bubble";
+              bubble.innerHTML = renderMarkdown(answerText);
+            } else if (evt.event === "error") {
+              settled = true;
+              statusRow.remove();
+              addMessage("system", "Error: " + evt.message);
+            }
+          }
+        }
+
+        if (targetSessionId === activeId && !answerStarted && !settled) {
+          // stream ended with nothing to show (shouldn't normally happen)
+          statusRow.remove();
+        }
       } catch (e) {
-        if (targetSessionId !== activeId) return;
-        typingEl.remove();
-        addMessage("system", "Network error: " + e.message);
+        if (targetSessionId === activeId) {
+          statusRow.remove();
+          addMessage("system", "Network error: " + e.message);
+        }
       } finally {
         sendBtn.disabled = false;
         inputEl.focus();
@@ -987,7 +1330,7 @@
 
     sendBtn.addEventListener("click", sendMessage);
 
-    renderTabs();
+    renderChatList();
     loadActiveHistory();
   </script>
 </body>

@@ -1,4 +1,5 @@
 import glob
+import json
 import os
 
 import pytest
@@ -62,6 +63,56 @@ def test_index_injects_api_key(monkeypatch):
     assert res.status_code == 200
     assert "test-app-key" in res.text
     assert "__APP_API_KEY__" not in res.text
+
+
+def test_chat_stream_rejects_missing_api_key(monkeypatch):
+    client = make_client(monkeypatch)
+    res = client.post("/chat/stream", json={"session_id": "s1", "message": "hi"})
+    assert res.status_code == 401
+
+
+def test_chat_stream_yields_ndjson_events(monkeypatch):
+    client = make_client(monkeypatch)
+
+    def fake_stream_turn(messages):
+        yield {"event": "tool_call", "tool": "calculator"}
+        yield {"event": "token", "text": "Hello"}
+        yield {"event": "token", "text": " world"}
+
+    monkeypatch.setattr(api, "stream_turn", fake_stream_turn)
+
+    res = client.post(
+        "/chat/stream",
+        json={"session_id": "s1", "message": "hi"},
+        headers={"X-API-Key": "test-app-key"},
+    )
+    assert res.status_code == 200
+    events = [json.loads(line) for line in res.text.strip().split("\n") if line.strip()]
+    assert events == [
+        {"event": "tool_call", "tool": "calculator"},
+        {"event": "token", "text": "Hello"},
+        {"event": "token", "text": " world"},
+    ]
+
+
+def test_chat_stream_reports_error_event_on_exception(monkeypatch):
+    client = make_client(monkeypatch)
+
+    def fake_stream_turn(messages):
+        yield {"event": "token", "text": "partial"}
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(api, "stream_turn", fake_stream_turn)
+
+    res = client.post(
+        "/chat/stream",
+        json={"session_id": "s1", "message": "hi"},
+        headers={"X-API-Key": "test-app-key"},
+    )
+    assert res.status_code == 200
+    events = [json.loads(line) for line in res.text.strip().split("\n") if line.strip()]
+    assert events[0] == {"event": "token", "text": "partial"}
+    assert events[-1]["event"] == "error"
 
 
 def test_upload_rejects_missing_api_key(monkeypatch):

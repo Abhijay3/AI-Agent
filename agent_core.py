@@ -1,5 +1,6 @@
 import json
 import os
+import re
 
 from dotenv import load_dotenv
 from openai import BadRequestError, OpenAI
@@ -183,7 +184,7 @@ TOOL_FUNCTIONS = {
 MAX_RETRIES = 3
 
 
-def call_model(messages: list):
+def call_model_stream(messages: list):
     last_error = None
     for _ in range(MAX_RETRIES):
         try:
@@ -191,17 +192,18 @@ def call_model(messages: list):
                 model=MODEL,
                 messages=messages,
                 tools=tools,
+                stream=True,
             )
         except BadRequestError as e:
             last_error = e
     raise last_error
 
 
-def run_turn(messages: list) -> str:
+def _build_system_message(messages: list) -> dict:
     last_user_message = messages[-1]["content"]
     context_docs = retrieve(last_user_message)
     context_text = "\n\n---\n\n".join(context_docs)
-    system_message = {
+    return {
         "role": "system",
         "content": (
             "You are a helpful customer support agent for Acme Corp. Use the "
@@ -217,31 +219,127 @@ def run_turn(messages: list) -> str:
         ),
     }
 
+
+def stream_turn(messages: list):
+    """Runs one user turn against the model, yielding events as they
+    happen so a caller can show live progress instead of waiting for the
+    whole reply:
+      {"event": "tool_call", "tool": name}
+      {"event": "token", "text": delta}
+      {"event": "error", "message": str}
+    Appends the resulting assistant/tool messages to `messages` in place,
+    same as the old non-streaming run_turn did.
+    """
+    system_message = _build_system_message(messages)
+    # Counts consecutive stream failures that happened before anything was
+    # shown to the user, so they can be retried transparently (distinct
+    # from the outer loop's normal tool-calling round trips, which reset
+    # this back to 0).
+    retry_count = 0
+
     while True:
         api_messages = [system_message] + messages
         try:
-            response = call_model(api_messages)
+            stream = call_model_stream(api_messages)
         except BadRequestError:
             fallback = "Sorry, I couldn't process that. Could you rephrase, or be more specific (e.g. name a city)?"
             messages.append({"role": "assistant", "content": fallback})
-            return fallback
+            yield {"event": "token", "text": fallback}
+            return
 
-        message = response.choices[0].message
-        messages.append(message)
+        content = ""
+        tool_calls_acc = {}  # index -> {"id": str, "name": str, "arguments": str}
+        # Llama 3.3 70B on Groq occasionally leaks a malformed pseudo tool
+        # call as plain text content (e.g. "<function.run_sql_query{...}")
+        # instead of using the structured tool_calls delta, especially when
+        # a prompt combines tool use with formatting requests. Detect it on
+        # the first chunk and suppress streaming it verbatim to the user.
+        leaked_tool_call = False
+        first_chunk_seen = False
 
-        if not message.tool_calls:
-            return message.content
+        try:
+            for chunk in stream:
+                delta = chunk.choices[0].delta
 
-        for tool_call in message.tool_calls:
-            args = json.loads(tool_call.function.arguments)
-            function = TOOL_FUNCTIONS[tool_call.function.name]
+                if delta.content:
+                    content += delta.content
+                    if not first_chunk_seen:
+                        first_chunk_seen = True
+                        if re.match(r"^\s*<function[.\s]", content, re.IGNORECASE):
+                            leaked_tool_call = True
+                    if not leaked_tool_call:
+                        yield {"event": "token", "text": delta.content}
+
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        acc = tool_calls_acc.setdefault(
+                            tc.index, {"id": None, "name": None, "arguments": ""}
+                        )
+                        if tc.id:
+                            acc["id"] = tc.id
+                        if tc.function and tc.function.name:
+                            acc["name"] = tc.function.name
+                        if tc.function and tc.function.arguments:
+                            acc["arguments"] += tc.function.arguments
+        except Exception as e:
+            # Groq sometimes rejects a malformed function-call generation
+            # entirely (a different failure mode than the text-leak above).
+            # If nothing was shown to the user yet, it's safe to quietly
+            # retry rather than surfacing a scary error for a transient
+            # generation hiccup.
+            if not content and not tool_calls_acc and retry_count < MAX_RETRIES - 1:
+                retry_count += 1
+                continue
+            yield {"event": "error", "message": str(e)}
+            return
+
+        retry_count = 0
+
+        if leaked_tool_call and not tool_calls_acc:
+            fallback = "Sorry, I wasn't able to complete that request. Could you try rephrasing it?"
+            messages.append({"role": "assistant", "content": fallback})
+            yield {"event": "content_replace", "text": fallback}
+            return
+
+        if not tool_calls_acc:
+            messages.append({"role": "assistant", "content": content})
+            return
+
+        tool_calls_list = [
+            {
+                "id": acc["id"],
+                "type": "function",
+                "function": {"name": acc["name"], "arguments": acc["arguments"]},
+            }
+            for acc in tool_calls_acc.values()
+        ]
+        messages.append(
+            {"role": "assistant", "content": content or None, "tool_calls": tool_calls_list}
+        )
+
+        for acc in tool_calls_acc.values():
+            yield {"event": "tool_call", "tool": acc["name"]}
+            args = json.loads(acc["arguments"]) if acc["arguments"] else {}
+            function = TOOL_FUNCTIONS[acc["name"]]
             try:
                 output = str(function(**args))
             except ValueError as e:
                 output = f"Error: {e}"
 
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": output,
-            })
+            messages.append(
+                {"role": "tool", "tool_call_id": acc["id"], "content": output}
+            )
+        # loop back for the next model call now that tool results are in
+
+
+def run_turn(messages: list) -> str:
+    """Non-streaming convenience wrapper over stream_turn, for the CLI."""
+    text = ""
+    for event in stream_turn(messages):
+        if event["event"] == "token":
+            text += event["text"]
+        elif event["event"] == "content_replace":
+            text = event["text"]
+        elif event["event"] == "error":
+            raise RuntimeError(event["message"])
+    return text

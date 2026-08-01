@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -5,13 +6,14 @@ import uuid
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Request, Security, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
+from starlette.concurrency import iterate_in_threadpool
 
-from agent_core import run_turn
+from agent_core import run_turn, stream_turn
 from memory import REDIS_HOST, delete_history, load_history, save_history
 from rag import ingest_docs
 from schemas import (
@@ -96,6 +98,28 @@ def chat(request: Request, body: ChatRequest) -> ChatResponse:
 
     save_history(body.session_id, messages)
     return ChatResponse(reply=reply)
+
+
+@app.post("/chat/stream", dependencies=[Depends(require_api_key)])
+@limiter.limit("20/minute")
+async def chat_stream(request: Request, body: ChatRequest) -> StreamingResponse:
+    messages = load_history(body.session_id)
+    messages.append({"role": "user", "content": body.message})
+
+    def event_source():
+        try:
+            for event in stream_turn(messages):
+                yield json.dumps(event) + "\n"
+        except Exception:
+            logger.exception("stream_turn failed for session_id=%s", body.session_id)
+            yield json.dumps({"event": "error", "message": "Upstream model request failed"}) + "\n"
+        finally:
+            save_history(body.session_id, messages)
+
+    return StreamingResponse(
+        iterate_in_threadpool(event_source()),
+        media_type="application/x-ndjson",
+    )
 
 
 @app.post("/upload", response_model=UploadResponse, dependencies=[Depends(require_api_key)])
