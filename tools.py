@@ -136,6 +136,53 @@ def create_support_ticket(name: str, email: str, subject: str, description: str)
     return f"Support ticket #{ticket_id} created. Our team will follow up at {email}."
 
 
+def remember_about_me(key: str, value: str) -> str:
+    normalized_key = key.strip().lower().replace(" ", "_")
+    if not normalized_key:
+        raise ValueError("Key must not be empty.")
+
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO memories (key, value, updated_at) VALUES (?, ?, datetime('now')) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            (normalized_key, value),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return f"Remembered: {normalized_key} = {value}"
+
+
+def forget_about_me(key: str) -> str:
+    normalized_key = key.strip().lower().replace(" ", "_")
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM memories WHERE key = ?", (normalized_key,))
+        deleted = cur.rowcount
+        conn.commit()
+    finally:
+        conn.close()
+
+    if deleted:
+        return f"Forgot '{normalized_key}'."
+    return f"Nothing was remembered for '{normalized_key}'."
+
+
+def get_all_memories() -> dict:
+    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT key, value FROM memories ORDER BY key")
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+    return dict(rows)
+
+
 def read_pdf(path: str) -> str:
     # Resolve against the uploads dir and make sure the result doesn't
     # escape it (blocks "../../.env"-style traversal and absolute paths).

@@ -27,6 +27,11 @@ CREATE TABLE IF NOT EXISTS tickets (
     status TEXT NOT NULL DEFAULT 'open',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS memories (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 PRODUCTS = [
@@ -83,6 +88,7 @@ def reset_db(path: str = DB_PATH) -> None:
         cur.execute("DROP TABLE IF EXISTS products")
         cur.execute("DROP TABLE IF EXISTS orders")
         cur.execute("DROP TABLE IF EXISTS tickets")
+        cur.execute("DROP TABLE IF EXISTS memories")
         conn.commit()
     finally:
         conn.close()

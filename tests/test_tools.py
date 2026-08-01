@@ -9,7 +9,10 @@ from tools import (  # noqa: E402
     calculator,
     check_order_status,
     create_support_ticket,
+    forget_about_me,
+    get_all_memories,
     read_pdf,
+    remember_about_me,
     run_sql_query,
 )
 
@@ -51,6 +54,8 @@ def test_run_sql_query_blocks_orders_and_tickets_tables():
         run_sql_query("SELECT * FROM orders")
     with pytest.raises(ValueError):
         run_sql_query("SELECT * FROM tickets")
+    with pytest.raises(ValueError):
+        run_sql_query("SELECT * FROM memories")
 
 
 def test_check_order_status_matches_id_and_email():
@@ -101,3 +106,36 @@ def test_browse_webpage_blocks_non_http_scheme():
 
 def test_browse_webpage_allows_public_host():
     assert _is_public_http_url("https://example.com") is True
+
+
+@pytest.fixture(autouse=True)
+def cleanup_test_memories():
+    yield
+    for key in ["test_name", "test_role", "test_key"]:
+        forget_about_me(key)
+
+
+def test_remember_about_me_persists_and_normalizes_key():
+    result = remember_about_me("Test Name", "Abhi")
+    assert result == "Remembered: test_name = Abhi"
+    assert get_all_memories()["test_name"] == "Abhi"
+
+
+def test_remember_about_me_overwrites_existing_key():
+    remember_about_me("test_role", "backend developer")
+    remember_about_me("test_role", "full stack developer")
+    assert get_all_memories()["test_role"] == "full stack developer"
+
+
+def test_forget_about_me_removes_key():
+    remember_about_me("test_key", "some value")
+    assert "test_key" in get_all_memories()
+
+    result = forget_about_me("test_key")
+    assert result == "Forgot 'test_key'."
+    assert "test_key" not in get_all_memories()
+
+
+def test_forget_about_me_unknown_key_is_graceful():
+    result = forget_about_me("nonexistent_key_xyz")
+    assert "Nothing was remembered" in result

@@ -11,8 +11,11 @@ from tools import (
     calculator,
     check_order_status,
     create_support_ticket,
+    forget_about_me,
+    get_all_memories,
     get_weather,
     read_pdf,
+    remember_about_me,
     run_sql_query,
     web_search,
 )
@@ -125,6 +128,44 @@ tools = [
     {
         "type": "function",
         "function": {
+            "name": "remember_about_me",
+            "description": (
+                "Save a durable fact about the person you're talking to, so "
+                "you remember it in every future conversation with them, "
+                "not just this one — e.g. their name, role, company, or "
+                "preferences. Use a short lowercase key like 'name' or "
+                "'role'. Calling this again with the same key overwrites "
+                "the old value, so use it to correct facts too."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string"},
+                    "value": {"type": "string"},
+                },
+                "required": ["key", "value"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "forget_about_me",
+            "description": "Remove a previously remembered fact about the user by its key.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string"},
+                },
+                "required": ["key"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "web_search",
             "description": "Search the web for current information not known from training data.",
             "parameters": {
@@ -178,6 +219,8 @@ TOOL_FUNCTIONS = {
     "browse_webpage": browse_webpage,
     "check_order_status": check_order_status,
     "create_support_ticket": create_support_ticket,
+    "remember_about_me": remember_about_me,
+    "forget_about_me": forget_about_me,
 }
 
 
@@ -203,6 +246,14 @@ def _build_system_message(messages: list) -> dict:
     last_user_message = messages[-1]["content"]
     context_docs = retrieve(last_user_message)
     context_text = "\n\n---\n\n".join(context_docs)
+
+    memories = get_all_memories()
+    memory_text = (
+        "\n".join(f"- {key}: {value}" for key, value in memories.items())
+        if memories
+        else "(nothing remembered yet)"
+    )
+
     return {
         "role": "system",
         "content": (
@@ -215,7 +266,15 @@ def _build_system_message(messages: list) -> dict:
             "create_support_ticket only needs a name, email, subject, and "
             "description — nothing else. Once you have those four things, "
             "file the ticket immediately; don't ask for an order ID or any "
-            "other detail it doesn't require.\n\n" + context_text
+            "other detail it doesn't require.\n\n"
+            "You have persistent memory about the person you're talking to, "
+            "shared across every conversation with them, not just this one. "
+            "What you currently remember about them:\n" + memory_text + "\n\n"
+            "Whenever they share something durable about themselves (name, "
+            "role, company, preferences, ongoing projects, etc.), call "
+            "remember_about_me to save it immediately, without being asked. "
+            "Use what's already remembered naturally instead of asking them "
+            "to repeat it.\n\n" + context_text
         ),
     }
 

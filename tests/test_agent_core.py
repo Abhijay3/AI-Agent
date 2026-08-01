@@ -15,6 +15,25 @@ def make_tool_call_delta(index, call_id=None, name=None, arguments=None):
     return SimpleNamespace(index=index, id=call_id, function=SimpleNamespace(name=name, arguments=arguments))
 
 
+def test_build_system_message_injects_remembered_facts(monkeypatch):
+    monkeypatch.setattr(agent_core, "get_all_memories", lambda: {"name": "Abhi", "role": "full stack developer"})
+    monkeypatch.setattr(agent_core, "retrieve", lambda query: [])
+
+    system_message = agent_core._build_system_message([{"role": "user", "content": "hi"}])
+
+    assert "- name: Abhi" in system_message["content"]
+    assert "- role: full stack developer" in system_message["content"]
+
+
+def test_build_system_message_handles_no_memories(monkeypatch):
+    monkeypatch.setattr(agent_core, "get_all_memories", lambda: {})
+    monkeypatch.setattr(agent_core, "retrieve", lambda query: [])
+
+    system_message = agent_core._build_system_message([{"role": "user", "content": "hi"}])
+
+    assert "(nothing remembered yet)" in system_message["content"]
+
+
 def test_stream_turn_plain_text_response(monkeypatch):
     chunks = [make_chunk(content="Hello"), make_chunk(content=" world")]
     monkeypatch.setattr(agent_core, "call_model_stream", lambda messages: iter(chunks))
