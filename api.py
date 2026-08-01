@@ -4,7 +4,7 @@ import os
 import re
 import uuid
 
-from fastapi import Depends, FastAPI, HTTPException, Path, Request, Security, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Security, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
@@ -21,12 +21,16 @@ from schemas import (
     ChatResponse,
     HistoryMessage,
     HistoryResponse,
+    MemoriesResponse,
+    MemoryItem,
     UploadResponse,
 )
 from setup_db import ensure_seeded
-from tools import PDF_UPLOAD_DIR
+from tools import PDF_UPLOAD_DIR, forget_about_me, get_all_memories
 
 SESSION_ID_PATH = Path(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+USER_ID_QUERY = Query(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+MEMORY_KEY_PATH = Path(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
@@ -172,4 +176,18 @@ def get_history(session_id: str = SESSION_ID_PATH) -> HistoryResponse:
 @app.delete("/history/{session_id}", dependencies=[Depends(require_api_key)])
 def clear_history(session_id: str = SESSION_ID_PATH) -> dict:
     delete_history(session_id)
+    return {"status": "deleted"}
+
+
+@app.get("/memories", response_model=MemoriesResponse, dependencies=[Depends(require_api_key)])
+@limiter.limit("30/minute")
+def list_memories(request: Request, user_id: str = USER_ID_QUERY) -> MemoriesResponse:
+    memories = get_all_memories(user_id)
+    return MemoriesResponse(memories=[MemoryItem(key=k, value=v) for k, v in memories.items()])
+
+
+@app.delete("/memories/{key}", dependencies=[Depends(require_api_key)])
+@limiter.limit("30/minute")
+def delete_memory(request: Request, key: str = MEMORY_KEY_PATH, user_id: str = USER_ID_QUERY) -> dict:
+    forget_about_me(user_id, key)
     return {"status": "deleted"}

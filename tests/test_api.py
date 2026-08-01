@@ -198,3 +198,52 @@ def test_delete_history_requires_auth_and_clears(monkeypatch):
     res = client.delete("/history/s1", headers={"X-API-Key": "test-app-key"})
     assert res.status_code == 200
     assert calls == ["s1"]
+
+
+def test_list_memories_requires_auth(monkeypatch):
+    client = make_client(monkeypatch)
+    res = client.get("/memories", params={"user_id": "u1"})
+    assert res.status_code == 401
+
+
+def test_list_memories_returns_scoped_facts(monkeypatch):
+    client = make_client(monkeypatch)
+    seen_user_ids = []
+
+    def fake_get_all_memories(user_id):
+        seen_user_ids.append(user_id)
+        return {"name": "Abhi", "role": "full stack developer"}
+
+    monkeypatch.setattr(api, "get_all_memories", fake_get_all_memories)
+
+    res = client.get(
+        "/memories",
+        params={"user_id": "u1"},
+        headers={"X-API-Key": "test-app-key"},
+    )
+    assert res.status_code == 200
+    assert res.json() == {
+        "memories": [
+            {"key": "name", "value": "Abhi"},
+            {"key": "role", "value": "full stack developer"},
+        ]
+    }
+    assert seen_user_ids == ["u1"]
+
+
+def test_delete_memory_requires_auth_and_scopes_to_user(monkeypatch):
+    client = make_client(monkeypatch)
+    calls = []
+    monkeypatch.setattr(api, "forget_about_me", lambda user_id, key: calls.append((user_id, key)))
+
+    res = client.delete("/memories/name", params={"user_id": "u1"})
+    assert res.status_code == 401
+    assert calls == []
+
+    res = client.delete(
+        "/memories/name",
+        params={"user_id": "u1"},
+        headers={"X-API-Key": "test-app-key"},
+    )
+    assert res.status_code == 200
+    assert calls == [("u1", "name")]

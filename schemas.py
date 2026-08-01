@@ -22,3 +22,12 @@ class HistoryMessage(BaseModel):
 
 class HistoryResponse(BaseModel):
     messages: list[HistoryMessage]
+
+
+class MemoryItem(BaseModel):
+    key: str
+    value: str
+
+
+class MemoriesResponse(BaseModel):
+    memories: list[MemoryItem]

@@ -278,6 +278,80 @@
   #sidebar::-webkit-scrollbar, #chatList::-webkit-scrollbar { width: 6px; }
   #sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 6px; }
 
+  #memoryPanel {
+    border-top: 1px solid var(--surface-border);
+    padding-top: 10px;
+    margin-top: 4px;
+    flex-shrink: 0;
+  }
+  #memoryToggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 8px;
+    border-radius: 9px;
+    border: none;
+    background: none;
+    color: var(--text-dim);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  #memoryToggle:hover { background: var(--surface-hover); color: var(--text); }
+  #memoryCount {
+    font-size: 11px;
+    color: var(--text-faint);
+    background: rgba(124, 92, 255, 0.15);
+    border-radius: 999px;
+    padding: 1px 7px;
+  }
+  #memoryList {
+    display: none;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 4px;
+  }
+  #memoryList.open { display: flex; }
+  .memory-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 8px;
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .memory-item:hover { background: var(--surface-hover); }
+  .memory-item-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .memory-item-text b { color: var(--text); font-weight: 600; }
+  .memory-item-del {
+    background: none;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 3px 5px;
+    border-radius: 6px;
+    opacity: 0;
+    flex-shrink: 0;
+    transition: opacity 0.15s, color 0.15s, background 0.15s;
+  }
+  .memory-item:hover .memory-item-del { opacity: 1; }
+  .memory-item-del:hover { color: var(--danger); background: rgba(255, 107, 129, 0.12); }
+  .memory-empty {
+    font-size: 12px;
+    color: var(--text-faint);
+    padding: 6px 8px;
+  }
+
   #mainArea {
     flex: 1;
     min-width: 0;
@@ -660,6 +734,13 @@
         New chat
       </button>
       <div id="chatList"></div>
+      <div id="memoryPanel">
+        <button id="memoryToggle" type="button">
+          <span>🧠 What I know about you</span>
+          <span id="memoryCount"></span>
+        </button>
+        <div id="memoryList"></div>
+      </div>
     </aside>
 
     <main id="mainArea">
@@ -736,6 +817,77 @@
       userId = "user-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
       localStorage.setItem(USER_ID_KEY, userId);
     }
+
+    // ---------- "what I know about you" memory panel ----------
+    const memoryToggle = document.getElementById("memoryToggle");
+    const memoryListEl = document.getElementById("memoryList");
+    const memoryCountEl = document.getElementById("memoryCount");
+    let memoryPanelOpen = false;
+
+    async function loadMemories() {
+      try {
+        const res = await fetch(`/memories?user_id=${encodeURIComponent(userId)}`, {
+          headers: { "X-API-Key": API_KEY },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        renderMemories(data.memories || []);
+      } catch {
+        // silent — the panel just won't update this round
+      }
+    }
+
+    function renderMemories(memories) {
+      memoryCountEl.textContent = memories.length ? String(memories.length) : "";
+      memoryListEl.innerHTML = "";
+
+      if (memories.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "memory-empty";
+        empty.textContent = "Nothing remembered yet.";
+        memoryListEl.appendChild(empty);
+        return;
+      }
+
+      for (const m of memories) {
+        const item = document.createElement("div");
+        item.className = "memory-item";
+
+        const text = document.createElement("span");
+        text.className = "memory-item-text";
+        text.innerHTML = `<b>${escapeHtml(m.key)}</b>: ${escapeHtml(m.value)}`;
+
+        const del = document.createElement("button");
+        del.className = "memory-item-del";
+        del.type = "button";
+        del.title = "Forget this";
+        del.textContent = "✕";
+        del.addEventListener("click", async () => {
+          del.disabled = true;
+          try {
+            await fetch(`/memories/${encodeURIComponent(m.key)}?user_id=${encodeURIComponent(userId)}`, {
+              method: "DELETE",
+              headers: { "X-API-Key": API_KEY },
+            });
+            loadMemories();
+          } catch {
+            del.disabled = false;
+          }
+        });
+
+        item.appendChild(text);
+        item.appendChild(del);
+        memoryListEl.appendChild(item);
+      }
+    }
+
+    memoryToggle.addEventListener("click", () => {
+      memoryPanelOpen = !memoryPanelOpen;
+      memoryListEl.classList.toggle("open", memoryPanelOpen);
+      if (memoryPanelOpen) loadMemories();
+    });
+
+    loadMemories();
 
     function loadSessions() {
       try {
@@ -1336,6 +1488,7 @@
       } finally {
         sendBtn.disabled = false;
         inputEl.focus();
+        loadMemories();
       }
     }
 
