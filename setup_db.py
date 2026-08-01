@@ -28,9 +28,11 @@ CREATE TABLE IF NOT EXISTS tickets (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS memories (
-    key TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    key TEXT NOT NULL,
     value TEXT NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, key)
 );
 """
 
@@ -57,6 +59,18 @@ def ensure_seeded(path: str = DB_PATH) -> None:
     conn = sqlite3.connect(path)
     try:
         cur = conn.cursor()
+
+        # One-time migration: memories used to be global (no user_id column,
+        # `key` alone as the primary key). Drop and recreate it if an old-
+        # shaped table is still around — it only ever held pre-launch test
+        # data, never real per-user data, so there's nothing worth preserving.
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='memories'")
+        if cur.fetchone():
+            cur.execute("PRAGMA table_info(memories)")
+            existing_columns = {row[1] for row in cur.fetchall()}
+            if "user_id" not in existing_columns:
+                cur.execute("DROP TABLE memories")
+
         cur.executescript(SCHEMA)
 
         cur.execute("SELECT COUNT(*) FROM products")

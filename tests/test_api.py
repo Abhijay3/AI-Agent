@@ -17,7 +17,7 @@ def cleanup_test_uploads():
 
 
 def make_client(monkeypatch):
-    monkeypatch.setattr(api, "run_turn", lambda messages: "mocked reply")
+    monkeypatch.setattr(api, "run_turn", lambda messages, user_id: "mocked reply")
     monkeypatch.setattr(api, "load_history", lambda session_id: [])
     monkeypatch.setattr(api, "save_history", lambda session_id, messages: None)
     return TestClient(api.app)
@@ -32,7 +32,7 @@ def test_health_needs_no_auth(monkeypatch):
 
 def test_chat_rejects_missing_api_key(monkeypatch):
     client = make_client(monkeypatch)
-    res = client.post("/chat", json={"session_id": "s1", "message": "hi"})
+    res = client.post("/chat", json={"session_id": "s1", "user_id": "u1", "message": "hi"})
     assert res.status_code == 401
 
 
@@ -40,7 +40,7 @@ def test_chat_rejects_wrong_api_key(monkeypatch):
     client = make_client(monkeypatch)
     res = client.post(
         "/chat",
-        json={"session_id": "s1", "message": "hi"},
+        json={"session_id": "s1", "user_id": "u1", "message": "hi"},
         headers={"X-API-Key": "wrong-key"},
     )
     assert res.status_code == 401
@@ -50,7 +50,7 @@ def test_chat_accepts_correct_api_key(monkeypatch):
     client = make_client(monkeypatch)
     res = client.post(
         "/chat",
-        json={"session_id": "s1", "message": "hi"},
+        json={"session_id": "s1", "user_id": "u1", "message": "hi"},
         headers={"X-API-Key": "test-app-key"},
     )
     assert res.status_code == 200
@@ -67,14 +67,14 @@ def test_index_injects_api_key(monkeypatch):
 
 def test_chat_stream_rejects_missing_api_key(monkeypatch):
     client = make_client(monkeypatch)
-    res = client.post("/chat/stream", json={"session_id": "s1", "message": "hi"})
+    res = client.post("/chat/stream", json={"session_id": "s1", "user_id": "u1", "message": "hi"})
     assert res.status_code == 401
 
 
 def test_chat_stream_yields_ndjson_events(monkeypatch):
     client = make_client(monkeypatch)
 
-    def fake_stream_turn(messages):
+    def fake_stream_turn(messages, user_id):
         yield {"event": "tool_call", "tool": "calculator"}
         yield {"event": "token", "text": "Hello"}
         yield {"event": "token", "text": " world"}
@@ -83,7 +83,7 @@ def test_chat_stream_yields_ndjson_events(monkeypatch):
 
     res = client.post(
         "/chat/stream",
-        json={"session_id": "s1", "message": "hi"},
+        json={"session_id": "s1", "user_id": "u1", "message": "hi"},
         headers={"X-API-Key": "test-app-key"},
     )
     assert res.status_code == 200
@@ -98,7 +98,7 @@ def test_chat_stream_yields_ndjson_events(monkeypatch):
 def test_chat_stream_reports_error_event_on_exception(monkeypatch):
     client = make_client(monkeypatch)
 
-    def fake_stream_turn(messages):
+    def fake_stream_turn(messages, user_id):
         yield {"event": "token", "text": "partial"}
         raise RuntimeError("boom")
 
@@ -106,7 +106,7 @@ def test_chat_stream_reports_error_event_on_exception(monkeypatch):
 
     res = client.post(
         "/chat/stream",
-        json={"session_id": "s1", "message": "hi"},
+        json={"session_id": "s1", "user_id": "u1", "message": "hi"},
         headers={"X-API-Key": "test-app-key"},
     )
     assert res.status_code == 200

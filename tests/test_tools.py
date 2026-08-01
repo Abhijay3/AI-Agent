@@ -108,34 +108,52 @@ def test_browse_webpage_allows_public_host():
     assert _is_public_http_url("https://example.com") is True
 
 
+TEST_USER = "test-user-1"
+OTHER_USER = "test-user-2"
+
+
 @pytest.fixture(autouse=True)
 def cleanup_test_memories():
     yield
-    for key in ["test_name", "test_role", "test_key"]:
-        forget_about_me(key)
+    for user in [TEST_USER, OTHER_USER]:
+        for key in ["test_name", "test_role", "test_key"]:
+            forget_about_me(user, key)
 
 
 def test_remember_about_me_persists_and_normalizes_key():
-    result = remember_about_me("Test Name", "Abhi")
+    result = remember_about_me(TEST_USER, "Test Name", "Abhi")
     assert result == "Remembered: test_name = Abhi"
-    assert get_all_memories()["test_name"] == "Abhi"
+    assert get_all_memories(TEST_USER)["test_name"] == "Abhi"
 
 
 def test_remember_about_me_overwrites_existing_key():
-    remember_about_me("test_role", "backend developer")
-    remember_about_me("test_role", "full stack developer")
-    assert get_all_memories()["test_role"] == "full stack developer"
+    remember_about_me(TEST_USER, "test_role", "backend developer")
+    remember_about_me(TEST_USER, "test_role", "full stack developer")
+    assert get_all_memories(TEST_USER)["test_role"] == "full stack developer"
 
 
 def test_forget_about_me_removes_key():
-    remember_about_me("test_key", "some value")
-    assert "test_key" in get_all_memories()
+    remember_about_me(TEST_USER, "test_key", "some value")
+    assert "test_key" in get_all_memories(TEST_USER)
 
-    result = forget_about_me("test_key")
+    result = forget_about_me(TEST_USER, "test_key")
     assert result == "Forgot 'test_key'."
-    assert "test_key" not in get_all_memories()
+    assert "test_key" not in get_all_memories(TEST_USER)
 
 
 def test_forget_about_me_unknown_key_is_graceful():
-    result = forget_about_me("nonexistent_key_xyz")
+    result = forget_about_me(TEST_USER, "nonexistent_key_xyz")
     assert "Nothing was remembered" in result
+
+
+def test_memories_are_isolated_per_user():
+    remember_about_me(TEST_USER, "test_name", "Abhi")
+    remember_about_me(OTHER_USER, "test_name", "Someone Else")
+
+    assert get_all_memories(TEST_USER)["test_name"] == "Abhi"
+    assert get_all_memories(OTHER_USER)["test_name"] == "Someone Else"
+
+    forget_about_me(TEST_USER, "test_name")
+    assert "test_name" not in get_all_memories(TEST_USER)
+    # forgetting for one user must not touch the other user's memory
+    assert get_all_memories(OTHER_USER)["test_name"] == "Someone Else"

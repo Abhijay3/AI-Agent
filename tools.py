@@ -136,7 +136,7 @@ def create_support_ticket(name: str, email: str, subject: str, description: str)
     return f"Support ticket #{ticket_id} created. Our team will follow up at {email}."
 
 
-def remember_about_me(key: str, value: str) -> str:
+def remember_about_me(user_id: str, key: str, value: str) -> str:
     normalized_key = key.strip().lower().replace(" ", "_")
     if not normalized_key:
         raise ValueError("Key must not be empty.")
@@ -145,9 +145,9 @@ def remember_about_me(key: str, value: str) -> str:
     try:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO memories (key, value, updated_at) VALUES (?, ?, datetime('now')) "
-            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-            (normalized_key, value),
+            "INSERT INTO memories (user_id, key, value, updated_at) VALUES (?, ?, ?, datetime('now')) "
+            "ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            (user_id, normalized_key, value),
         )
         conn.commit()
     finally:
@@ -156,12 +156,12 @@ def remember_about_me(key: str, value: str) -> str:
     return f"Remembered: {normalized_key} = {value}"
 
 
-def forget_about_me(key: str) -> str:
+def forget_about_me(user_id: str, key: str) -> str:
     normalized_key = key.strip().lower().replace(" ", "_")
     conn = sqlite3.connect(DB_PATH)
     try:
         cur = conn.cursor()
-        cur.execute("DELETE FROM memories WHERE key = ?", (normalized_key,))
+        cur.execute("DELETE FROM memories WHERE user_id = ? AND key = ?", (user_id, normalized_key))
         deleted = cur.rowcount
         conn.commit()
     finally:
@@ -172,11 +172,11 @@ def forget_about_me(key: str) -> str:
     return f"Nothing was remembered for '{normalized_key}'."
 
 
-def get_all_memories() -> dict:
+def get_all_memories(user_id: str) -> dict:
     conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
     try:
         cur = conn.cursor()
-        cur.execute("SELECT key, value FROM memories ORDER BY key")
+        cur.execute("SELECT key, value FROM memories WHERE user_id = ? ORDER BY key", (user_id,))
         rows = cur.fetchall()
     finally:
         conn.close()

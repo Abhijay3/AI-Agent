@@ -16,20 +16,24 @@ def make_tool_call_delta(index, call_id=None, name=None, arguments=None):
 
 
 def test_build_system_message_injects_remembered_facts(monkeypatch):
-    monkeypatch.setattr(agent_core, "get_all_memories", lambda: {"name": "Abhi", "role": "full stack developer"})
+    monkeypatch.setattr(
+        agent_core,
+        "get_all_memories",
+        lambda user_id: {"name": "Abhi", "role": "full stack developer"} if user_id == "u1" else {},
+    )
     monkeypatch.setattr(agent_core, "retrieve", lambda query: [])
 
-    system_message = agent_core._build_system_message([{"role": "user", "content": "hi"}])
+    system_message = agent_core._build_system_message([{"role": "user", "content": "hi"}], "u1")
 
     assert "- name: Abhi" in system_message["content"]
     assert "- role: full stack developer" in system_message["content"]
 
 
 def test_build_system_message_handles_no_memories(monkeypatch):
-    monkeypatch.setattr(agent_core, "get_all_memories", lambda: {})
+    monkeypatch.setattr(agent_core, "get_all_memories", lambda user_id: {})
     monkeypatch.setattr(agent_core, "retrieve", lambda query: [])
 
-    system_message = agent_core._build_system_message([{"role": "user", "content": "hi"}])
+    system_message = agent_core._build_system_message([{"role": "user", "content": "hi"}], "u1")
 
     assert "(nothing remembered yet)" in system_message["content"]
 
@@ -39,7 +43,7 @@ def test_stream_turn_plain_text_response(monkeypatch):
     monkeypatch.setattr(agent_core, "call_model_stream", lambda messages: iter(chunks))
 
     messages = [{"role": "user", "content": "hi"}]
-    events = list(agent_core.stream_turn(messages))
+    events = list(agent_core.stream_turn(messages, "u1"))
 
     assert events == [{"event": "token", "text": "Hello"}, {"event": "token", "text": " world"}]
     assert messages[-1] == {"role": "assistant", "content": "Hello world"}
@@ -55,7 +59,7 @@ def test_stream_turn_executes_tool_calls_then_streams_answer(monkeypatch):
     monkeypatch.setattr(agent_core, "call_model_stream", lambda messages: responses.pop(0))
 
     messages = [{"role": "user", "content": "what is 2+3"}]
-    events = list(agent_core.stream_turn(messages))
+    events = list(agent_core.stream_turn(messages, "u1"))
 
     assert events[0] == {"event": "tool_call", "tool": "calculator"}
     assert events[-1] == {"event": "token", "text": "The answer is 5."}
@@ -75,7 +79,7 @@ def test_stream_turn_detects_leaked_pseudo_tool_call(monkeypatch):
     monkeypatch.setattr(agent_core, "call_model_stream", lambda messages: iter(chunks))
 
     messages = [{"role": "user", "content": "list products"}]
-    events = list(agent_core.stream_turn(messages))
+    events = list(agent_core.stream_turn(messages, "u1"))
 
     assert len(events) == 1
     assert events[0]["event"] == "content_replace"
@@ -99,7 +103,7 @@ def test_stream_turn_retries_silently_on_early_stream_failure(monkeypatch):
     monkeypatch.setattr(agent_core, "call_model_stream", fake_call_model_stream)
 
     messages = [{"role": "user", "content": "hi"}]
-    events = list(agent_core.stream_turn(messages))
+    events = list(agent_core.stream_turn(messages, "u1"))
 
     assert call_count["n"] == 2
     assert events == [{"event": "token", "text": "ok now"}]
@@ -115,7 +119,7 @@ def test_stream_turn_gives_up_after_max_retries(monkeypatch):
     monkeypatch.setattr(agent_core, "call_model_stream", always_fails)
 
     messages = [{"role": "user", "content": "hi"}]
-    events = list(agent_core.stream_turn(messages))
+    events = list(agent_core.stream_turn(messages, "u1"))
 
     assert events == [{"event": "error", "message": "still broken"}]
 
@@ -125,6 +129,6 @@ def test_run_turn_wraps_stream_turn(monkeypatch):
     monkeypatch.setattr(agent_core, "call_model_stream", lambda messages: iter(chunks))
 
     messages = [{"role": "user", "content": "hi"}]
-    reply = agent_core.run_turn(messages)
+    reply = agent_core.run_turn(messages, "u1")
 
     assert reply == "plain answer"

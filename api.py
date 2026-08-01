@@ -91,7 +91,7 @@ def chat(request: Request, body: ChatRequest) -> ChatResponse:
     messages.append({"role": "user", "content": body.message})
 
     try:
-        reply = run_turn(messages)
+        reply = run_turn(messages, body.user_id)
     except Exception:
         logger.exception("run_turn failed for session_id=%s", body.session_id)
         raise HTTPException(status_code=502, detail="Upstream model request failed")
@@ -108,7 +108,7 @@ async def chat_stream(request: Request, body: ChatRequest) -> StreamingResponse:
 
     def event_source():
         try:
-            for event in stream_turn(messages):
+            for event in stream_turn(messages, body.user_id):
                 yield json.dumps(event) + "\n"
         except Exception:
             logger.exception("stream_turn failed for session_id=%s", body.session_id)

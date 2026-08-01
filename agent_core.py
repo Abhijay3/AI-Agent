@@ -242,12 +242,12 @@ def call_model_stream(messages: list):
     raise last_error
 
 
-def _build_system_message(messages: list) -> dict:
+def _build_system_message(messages: list, user_id: str) -> dict:
     last_user_message = messages[-1]["content"]
     context_docs = retrieve(last_user_message)
     context_text = "\n\n---\n\n".join(context_docs)
 
-    memories = get_all_memories()
+    memories = get_all_memories(user_id)
     memory_text = (
         "\n".join(f"- {key}: {value}" for key, value in memories.items())
         if memories
@@ -279,7 +279,7 @@ def _build_system_message(messages: list) -> dict:
     }
 
 
-def stream_turn(messages: list):
+def stream_turn(messages: list, user_id: str):
     """Runs one user turn against the model, yielding events as they
     happen so a caller can show live progress instead of waiting for the
     whole reply:
@@ -288,8 +288,14 @@ def stream_turn(messages: list):
       {"event": "error", "message": str}
     Appends the resulting assistant/tool messages to `messages` in place,
     same as the old non-streaming run_turn did.
+
+    `user_id` scopes remember_about_me/forget_about_me/get_all_memories so
+    one person's remembered facts never leak into another person's chats —
+    it is injected server-side into those two tool calls below, never
+    exposed to the model as a callable parameter, so the model can't be
+    steered into reading or writing another user's memory.
     """
-    system_message = _build_system_message(messages)
+    system_message = _build_system_message(messages, user_id)
     # Counts consecutive stream failures that happened before anything was
     # shown to the user, so they can be retried transparently (distinct
     # from the outer loop's normal tool-calling round trips, which reset
@@ -379,6 +385,8 @@ def stream_turn(messages: list):
         for acc in tool_calls_acc.values():
             yield {"event": "tool_call", "tool": acc["name"]}
             args = json.loads(acc["arguments"]) if acc["arguments"] else {}
+            if acc["name"] in ("remember_about_me", "forget_about_me"):
+                args["user_id"] = user_id
             function = TOOL_FUNCTIONS[acc["name"]]
             try:
                 output = str(function(**args))
@@ -391,10 +399,10 @@ def stream_turn(messages: list):
         # loop back for the next model call now that tool results are in
 
 
-def run_turn(messages: list) -> str:
+def run_turn(messages: list, user_id: str) -> str:
     """Non-streaming convenience wrapper over stream_turn, for the CLI."""
     text = ""
-    for event in stream_turn(messages):
+    for event in stream_turn(messages, user_id):
         if event["event"] == "token":
             text += event["text"]
         elif event["event"] == "content_replace":
