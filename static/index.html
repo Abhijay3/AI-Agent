@@ -376,6 +376,73 @@
     min-height: 100%;
   }
 
+  /* ---------- welcome / empty-state screen ---------- */
+  #welcomeScreen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 16px;
+    padding: 40px 12px;
+    animation: rise 0.4s ease both;
+  }
+  .welcome-mark {
+    width: 54px; height: 54px;
+    border-radius: 16px;
+    background: var(--accent-grad);
+    box-shadow: 0 0 32px rgba(124, 92, 255, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 800;
+    color: #0b0620;
+  }
+  .welcome-title {
+    font-size: 21px;
+    font-weight: 700;
+    margin: 0;
+  }
+  .welcome-sub {
+    font-size: 13.5px;
+    color: var(--text-dim);
+    max-width: 420px;
+    margin: 0;
+    line-height: 1.5;
+  }
+  .welcome-prompts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+    width: 100%;
+    max-width: 560px;
+  }
+  .welcome-prompt {
+    text-align: left;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--surface-border);
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 13px;
+    line-height: 1.4;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.12s;
+  }
+  .welcome-prompt:hover {
+    background: var(--surface-hover);
+    border-color: rgba(124, 92, 255, 0.4);
+    color: var(--text);
+    transform: translateY(-1px);
+  }
+  .welcome-prompt:active { transform: translateY(0) scale(0.98); }
+  @media (max-width: 560px) {
+    .welcome-prompts { grid-template-columns: 1fr; }
+  }
+
   .row {
     display: flex;
     gap: 10px;
@@ -392,7 +459,7 @@
 
   .avatar {
     width: 28px; height: 28px;
-    border-radius: 8px;
+    border-radius: 50%;
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -404,6 +471,7 @@
   .avatar.ai {
     background: var(--accent-grad);
     color: #0b0620;
+    box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.14);
   }
   .avatar.user {
     background: rgba(255, 255, 255, 0.1);
@@ -431,6 +499,7 @@
     border: 1px solid var(--surface-border);
     backdrop-filter: blur(10px);
     border-bottom-left-radius: 4px;
+    box-shadow: 0 8px 24px -16px rgba(0, 0, 0, 0.6);
   }
   .row.system .bubble {
     background: transparent;
@@ -682,8 +751,49 @@
     border-radius: 8px;
   }
 
+  /* ---------- mobile sidebar toggle ---------- */
+  #sidebarToggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 32px; height: 32px;
+    flex-shrink: 0;
+    border-radius: 9px;
+    border: 1px solid var(--surface-border);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+  }
+  #sidebarToggle:hover { background: var(--surface-hover); }
+
+  #sidebarBackdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(3, 2, 8, 0.6);
+    z-index: 15;
+  }
+  #sidebarBackdrop.show { display: block; }
+
   @media (max-width: 720px) {
-    #sidebar { position: fixed; inset: 0 auto 0 0; height: 100%; }
+    #sidebarToggle { display: flex; }
+    #sidebar {
+      position: fixed;
+      inset: 0 auto 0 0;
+      height: 100%;
+      width: min(80vw, 300px);
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      z-index: 20;
+      box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+    }
+    #sidebar.open { transform: translateX(0); }
+  }
+
+  /* ---------- keyboard focus ---------- */
+  button:focus-visible {
+    outline: 2px solid rgba(124, 92, 255, 0.65);
+    outline-offset: 2px;
   }
 </style>
 </head>
@@ -695,6 +805,9 @@
 
   <header>
     <div class="brand">
+      <button id="sidebarToggle" type="button" aria-label="Toggle chat list">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
       <div class="brand-mark">A</div>
       <h1>Abhijay's AI</h1>
     </div>
@@ -728,6 +841,7 @@
   </div>
 
   <div id="appBody">
+    <div id="sidebarBackdrop"></div>
     <aside id="sidebar">
       <button id="newChatBtn" type="button">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -785,6 +899,23 @@
     const attachRemove = document.getElementById("attachRemove");
     const chatListEl = document.getElementById("chatList");
     const newChatBtn = document.getElementById("newChatBtn");
+    const sidebarEl = document.getElementById("sidebar");
+    const sidebarToggle = document.getElementById("sidebarToggle");
+    const sidebarBackdrop = document.getElementById("sidebarBackdrop");
+
+    // ---------- mobile sidebar open/close ----------
+    function openSidebar() {
+      sidebarEl.classList.add("open");
+      sidebarBackdrop.classList.add("show");
+    }
+    function closeSidebar() {
+      sidebarEl.classList.remove("open");
+      sidebarBackdrop.classList.remove("show");
+    }
+    sidebarToggle.addEventListener("click", () => {
+      sidebarEl.classList.contains("open") ? closeSidebar() : openSidebar();
+    });
+    sidebarBackdrop.addEventListener("click", closeSidebar);
 
     let attachedFilename = null;
 
@@ -945,6 +1076,50 @@
       }
     }
 
+    const WELCOME_PROMPTS = [
+      { icon: "📦", text: "Check the status of order #1001 for alex@example.com" },
+      { icon: "🎫", text: "I need to file a support ticket about a broken keyboard" },
+      { icon: "🧮", text: "What is 482 × 17?" },
+      { icon: "🌦️", text: "What's the weather like in Tokyo right now?" },
+    ];
+
+    function renderWelcomeScreen() {
+      const wrap = document.createElement("div");
+      wrap.id = "welcomeScreen";
+
+      const mark = document.createElement("div");
+      mark.className = "welcome-mark";
+      mark.textContent = "A";
+
+      const title = document.createElement("h2");
+      title.className = "welcome-title";
+      title.textContent = "Hi, I'm Abhijay's AI";
+
+      const sub = document.createElement("p");
+      sub.className = "welcome-sub";
+      sub.textContent = "Ask about an order, file a ticket, or just chat — I remember what you tell me, across every conversation.";
+
+      const prompts = document.createElement("div");
+      prompts.className = "welcome-prompts";
+      for (const p of WELCOME_PROMPTS) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "welcome-prompt";
+        btn.textContent = `${p.icon}  ${p.text}`;
+        btn.addEventListener("click", () => {
+          inputEl.value = p.text;
+          sendMessage();
+        });
+        prompts.appendChild(btn);
+      }
+
+      wrap.appendChild(mark);
+      wrap.appendChild(title);
+      wrap.appendChild(sub);
+      wrap.appendChild(prompts);
+      chatEl.appendChild(wrap);
+    }
+
     async function loadActiveHistory() {
       chatEl.innerHTML = "";
       try {
@@ -954,7 +1129,7 @@
         if (res.ok) {
           const data = await res.json();
           if (data.messages.length === 0) {
-            addMessage("system", "New conversation");
+            renderWelcomeScreen();
           } else {
             for (const m of data.messages) {
               addMessage(m.role === "assistant" ? "ai" : "user", m.content);
@@ -963,10 +1138,11 @@
           return;
         }
       } catch {}
-      addMessage("system", "New conversation");
+      renderWelcomeScreen();
     }
 
     async function switchSession(id) {
+      closeSidebar();
       if (id === activeId) return;
       activeId = id;
       localStorage.setItem(ACTIVE_KEY, activeId);
@@ -1374,6 +1550,8 @@
     async function sendMessage() {
       const text = inputEl.value.trim();
       if (!text && !attachedFilename) return;
+
+      document.getElementById("welcomeScreen")?.remove();
 
       const displayText = attachedFilename ? `📎 ${attachedFilename}\n${text}` : text;
       addMessage("user", displayText || `📎 ${attachedFilename}`);
