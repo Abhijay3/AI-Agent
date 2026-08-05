@@ -31,3 +31,21 @@ class MemoryItem(BaseModel):
 
 class MemoriesResponse(BaseModel):
     memories: list[MemoryItem]
+
+
+class TicketItem(BaseModel):
+    id: int
+    name: str
+    email: str
+    subject: str
+    description: str
+    status: str
+    created_at: str
+
+
+class TicketsResponse(BaseModel):
+    tickets: list[TicketItem]
+
+
+class TicketStatusUpdate(BaseModel):
+    status: str = Field(..., pattern=r"^(open|resolved)$")

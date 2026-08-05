@@ -1,11 +1,13 @@
 import glob
 import json
 import os
+import sqlite3
 
 import pytest
 from fastapi.testclient import TestClient
 
 import api
+from setup_db import DB_PATH
 from tools import PDF_UPLOAD_DIR
 
 
@@ -14,6 +16,21 @@ def cleanup_test_uploads():
     yield
     for path in glob.glob(os.path.join(PDF_UPLOAD_DIR, "*_test_*.pdf")):
         os.remove(path)
+
+
+def _insert_ticket(subject, status="open", name="Test User", email="test@example.com"):
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO tickets (name, email, subject, description, status) VALUES (?, ?, ?, ?, ?)",
+            (name, email, subject, "Test description.", status),
+        )
+        ticket_id = cur.lastrowid
+        conn.commit()
+    finally:
+        conn.close()
+    return ticket_id
 
 
 def make_client(monkeypatch):
@@ -247,3 +264,79 @@ def test_delete_memory_requires_auth_and_scopes_to_user(monkeypatch):
     )
     assert res.status_code == 200
     assert calls == [("u1", "name")]
+
+
+def test_admin_page_injects_api_key(monkeypatch):
+    client = make_client(monkeypatch)
+    res = client.get("/admin")
+    assert res.status_code == 200
+    assert "test-app-key" in res.text
+    assert "__APP_API_KEY__" not in res.text
+
+
+def test_list_tickets_requires_auth(monkeypatch):
+    client = make_client(monkeypatch)
+    res = client.get("/admin/tickets")
+    assert res.status_code == 401
+
+
+def test_list_tickets_returns_and_filters_by_status(monkeypatch):
+    client = make_client(monkeypatch)
+    open_id = _insert_ticket("Open ticket", status="open")
+    resolved_id = _insert_ticket("Resolved ticket", status="resolved")
+
+    res = client.get("/admin/tickets", headers={"X-API-Key": "test-app-key"})
+    assert res.status_code == 200
+    ids = [t["id"] for t in res.json()["tickets"]]
+    assert open_id in ids
+    assert resolved_id in ids
+
+    res = client.get(
+        "/admin/tickets", params={"status": "open"}, headers={"X-API-Key": "test-app-key"}
+    )
+    ids = [t["id"] for t in res.json()["tickets"]]
+    assert open_id in ids
+    assert resolved_id not in ids
+
+
+def test_update_ticket_status_requires_auth_and_updates(monkeypatch):
+    client = make_client(monkeypatch)
+    ticket_id = _insert_ticket("To resolve", status="open")
+
+    res = client.post(f"/admin/tickets/{ticket_id}/status", json={"status": "resolved"})
+    assert res.status_code == 401
+
+    res = client.post(
+        f"/admin/tickets/{ticket_id}/status",
+        json={"status": "resolved"},
+        headers={"X-API-Key": "test-app-key"},
+    )
+    assert res.status_code == 200
+
+    res = client.get(
+        "/admin/tickets", params={"status": "resolved"}, headers={"X-API-Key": "test-app-key"}
+    )
+    ids = [t["id"] for t in res.json()["tickets"]]
+    assert ticket_id in ids
+
+
+def test_update_ticket_status_unknown_ticket_is_404(monkeypatch):
+    client = make_client(monkeypatch)
+    res = client.post(
+        "/admin/tickets/999999/status",
+        json={"status": "resolved"},
+        headers={"X-API-Key": "test-app-key"},
+    )
+    assert res.status_code == 404
+
+
+def test_update_ticket_status_rejects_invalid_status(monkeypatch):
+    client = make_client(monkeypatch)
+    ticket_id = _insert_ticket("Invalid status test", status="open")
+
+    res = client.post(
+        f"/admin/tickets/{ticket_id}/status",
+        json={"status": "not-a-real-status"},
+        headers={"X-API-Key": "test-app-key"},
+    )
+    assert res.status_code == 422

@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Abhijay's AI — Support Tickets</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg-0: #05040d;
+    --bg-1: #0b0620;
+    --surface: rgba(255, 255, 255, 0.045);
+    --surface-border: rgba(255, 255, 255, 0.09);
+    --surface-hover: rgba(255, 255, 255, 0.075);
+    --text: #ece9fb;
+    --text-dim: #9a92c4;
+    --text-faint: #6a638f;
+    --accent-1: #7c5cff;
+    --accent-2: #22d3ee;
+    --accent-grad: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+    --open: #ffb454;
+    --resolved: #34e5a8;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(ellipse at 50% -10%, var(--bg-1), var(--bg-0) 60%);
+    color: var(--text);
+  }
+
+  header {
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(8, 5, 20, 0.55);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--surface-border);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: var(--accent-grad);
+    box-shadow: 0 0 18px rgba(124, 92, 255, 0.55);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 800; color: #0b0620;
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .sub { font-size: 12px; color: var(--text-faint); margin-top: 1px; }
+
+  main { max-width: 980px; margin: 0 auto; padding: 22px 24px 60px; }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .filters { display: flex; gap: 6px; }
+  .filter-btn {
+    padding: 7px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--surface-border);
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .filter-btn:hover { background: var(--surface-hover); color: var(--text); }
+  .filter-btn.active {
+    background: rgba(124, 92, 255, 0.18);
+    border-color: rgba(124, 92, 255, 0.5);
+    color: var(--text);
+  }
+  #refreshBtn {
+    padding: 7px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--surface-border);
+    background: var(--surface);
+    color: var(--text-dim);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  #refreshBtn:hover { background: var(--surface-hover); color: var(--text); }
+
+  #ticketList { display: flex; flex-direction: column; gap: 10px; }
+
+  .ticket-card {
+    border: 1px solid var(--surface-border);
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    backdrop-filter: blur(10px);
+  }
+  .ticket-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .ticket-subject { font-size: 14.5px; font-weight: 600; }
+  .ticket-meta { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
+  .ticket-desc {
+    font-size: 13.5px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    margin: 8px 0 12px;
+    white-space: pre-wrap;
+  }
+  .ticket-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .status-badge {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 3px 9px;
+    border-radius: 999px;
+  }
+  .status-badge.open { background: rgba(255, 180, 84, 0.15); color: var(--open); }
+  .status-badge.resolved { background: rgba(52, 229, 168, 0.15); color: var(--resolved); }
+
+  .toggle-btn {
+    padding: 7px 14px;
+    border-radius: 9px;
+    border: none;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.15s, background 0.15s;
+  }
+  .toggle-btn.resolve { background: var(--accent-grad); color: #0b0620; }
+  .toggle-btn.reopen { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+  .toggle-btn:hover { filter: brightness(1.1); }
+  .toggle-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  #emptyState {
+    text-align: center;
+    color: var(--text-faint);
+    font-size: 13.5px;
+    padding: 60px 20px;
+  }
+
+  button:focus-visible {
+    outline: 2px solid rgba(124, 92, 255, 0.65);
+    outline-offset: 2px;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-mark">A</div>
+      <div>
+        <h1>Support Tickets</h1>
+        <div class="sub">Abhijay's AI — admin</div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="toolbar">
+      <div class="filters">
+        <button class="filter-btn active" data-status="">All</button>
+        <button class="filter-btn" data-status="open">Open</button>
+        <button class="filter-btn" data-status="resolved">Resolved</button>
+      </div>
+      <button id="refreshBtn" type="button">↻ Refresh</button>
+    </div>
+
+    <div id="ticketList"></div>
+    <div id="emptyState" style="display:none;">No tickets here.</div>
+  </main>
+
+  <script>
+    const API_KEY = "__APP_API_KEY__";
+    const listEl = document.getElementById("ticketList");
+    const emptyEl = document.getElementById("emptyState");
+    const filterBtns = document.querySelectorAll(".filter-btn");
+    const refreshBtn = document.getElementById("refreshBtn");
+
+    let activeFilter = "";
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function formatDate(iso) {
+      try {
+        return new Date(iso.replace(" ", "T") + "Z").toLocaleString();
+      } catch {
+        return iso;
+      }
+    }
+
+    async function loadTickets() {
+      listEl.innerHTML = "";
+      emptyEl.style.display = "none";
+
+      const url = activeFilter ? `/admin/tickets?status=${activeFilter}` : "/admin/tickets";
+      const res = await fetch(url, { headers: { "X-API-Key": API_KEY } });
+      if (!res.ok) {
+        emptyEl.textContent = "Failed to load tickets.";
+        emptyEl.style.display = "block";
+        return;
+      }
+      const data = await res.json();
+      renderTickets(data.tickets);
+    }
+
+    function renderTickets(tickets) {
+      if (tickets.length === 0) {
+        emptyEl.textContent = "No tickets here.";
+        emptyEl.style.display = "block";
+        return;
+      }
+
+      for (const t of tickets) {
+        const card = document.createElement("div");
+        card.className = "ticket-card";
+
+        const isOpen = t.status === "open";
+        card.innerHTML = `
+          <div class="ticket-top">
+            <div>
+              <div class="ticket-subject">${escapeHtml(t.subject)}</div>
+              <div class="ticket-meta">#${t.id} · ${escapeHtml(t.name)} · ${escapeHtml(t.email)} · ${formatDate(t.created_at)}</div>
+            </div>
+            <span class="status-badge ${t.status}">${t.status}</span>
+          </div>
+          <div class="ticket-desc">${escapeHtml(t.description)}</div>
+          <div class="ticket-bottom">
+            <button type="button" class="toggle-btn ${isOpen ? "resolve" : "reopen"}">
+              ${isOpen ? "Mark resolved" : "Reopen"}
+            </button>
+          </div>
+        `;
+
+        const toggleBtn = card.querySelector(".toggle-btn");
+        toggleBtn.addEventListener("click", async () => {
+          toggleBtn.disabled = true;
+          try {
+            await fetch(`/admin/tickets/${t.id}/status`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+              body: JSON.stringify({ status: isOpen ? "resolved" : "open" }),
+            });
+            loadTickets();
+          } catch {
+            toggleBtn.disabled = false;
+          }
+        });
+
+        listEl.appendChild(card);
+      }
+    }
+
+    filterBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        filterBtns.forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        activeFilter = btn.dataset.status;
+        loadTickets();
+      });
+    });
+
+    refreshBtn.addEventListener("click", loadTickets);
+
+    loadTickets();
+  </script>
+</body>
+</html>

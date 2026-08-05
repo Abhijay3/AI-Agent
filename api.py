@@ -2,7 +2,9 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import uuid
+from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Security, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,14 +25,19 @@ from schemas import (
     HistoryResponse,
     MemoriesResponse,
     MemoryItem,
+    TicketItem,
+    TicketsResponse,
+    TicketStatusUpdate,
     UploadResponse,
 )
-from setup_db import ensure_seeded
+from setup_db import DB_PATH, ensure_seeded
 from tools import PDF_UPLOAD_DIR, forget_about_me, get_all_memories
 
 SESSION_ID_PATH = Path(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
 USER_ID_QUERY = Query(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
 MEMORY_KEY_PATH = Path(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+TICKET_ID_PATH = Path(..., ge=1)
+TICKET_STATUS_QUERY = Query(None, pattern=r"^(open|resolved)$")
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
@@ -84,6 +91,19 @@ def index() -> HTMLResponse:
     # viewing page source on this served page can still read the key. It
     # stops casual/direct API abuse, not a determined attacker on a public
     # frontend. For real multi-user auth, replace with per-user login.
+    html = html.replace("__APP_API_KEY__", APP_API_KEY)
+    return HTMLResponse(content=html)
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin() -> HTMLResponse:
+    with open("static/admin.html") as f:
+        html = f.read()
+    # Same soft-gate tradeoff as index(): the key is embedded in this page
+    # server-side rather than committed to the static file. Anyone with the
+    # shared APP_API_KEY can reach this page directly by URL — there's no
+    # separate staff-only credential. Fine for a single-operator deployment;
+    # would need real per-user auth before handing this to multiple staff.
     html = html.replace("__APP_API_KEY__", APP_API_KEY)
     return HTMLResponse(content=html)
 
@@ -191,3 +211,46 @@ def list_memories(request: Request, user_id: str = USER_ID_QUERY) -> MemoriesRes
 def delete_memory(request: Request, key: str = MEMORY_KEY_PATH, user_id: str = USER_ID_QUERY) -> dict:
     forget_about_me(user_id, key)
     return {"status": "deleted"}
+
+
+@app.get("/admin/tickets", response_model=TicketsResponse, dependencies=[Depends(require_api_key)])
+@limiter.limit("30/minute")
+def list_tickets(request: Request, status: Optional[str] = TICKET_STATUS_QUERY) -> TicketsResponse:
+    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+    try:
+        cur = conn.cursor()
+        query = "SELECT id, name, email, subject, description, status, created_at FROM tickets"
+        params: tuple = ()
+        if status:
+            query += " WHERE status = ?"
+            params = (status,)
+        query += " ORDER BY created_at DESC"
+        cur.execute(query, params)
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    tickets = [
+        TicketItem(id=r[0], name=r[1], email=r[2], subject=r[3], description=r[4], status=r[5], created_at=r[6])
+        for r in rows
+    ]
+    return TicketsResponse(tickets=tickets)
+
+
+@app.post("/admin/tickets/{ticket_id}/status", dependencies=[Depends(require_api_key)])
+@limiter.limit("30/minute")
+def update_ticket_status(
+    request: Request, body: TicketStatusUpdate, ticket_id: int = TICKET_ID_PATH
+) -> dict:
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cur = conn.cursor()
+        cur.execute("UPDATE tickets SET status = ? WHERE id = ?", (body.status, ticket_id))
+        updated = cur.rowcount
+        conn.commit()
+    finally:
+        conn.close()
+
+    if not updated:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    return {"status": "updated"}
