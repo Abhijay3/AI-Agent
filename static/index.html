@@ -1676,10 +1676,20 @@
         });
 
         if (!res.ok || !res.body) {
-          const err = await res.text();
+          // Errors from our own API come back as JSON ({"detail": "..."}).
+          // Errors from an upstream proxy (e.g. Render returning a 502 while
+          // the app restarts) come back as a full HTML error page instead —
+          // never show that raw markup to the user.
+          let message = "Something went wrong. Please try again.";
+          try {
+            const data = await res.json();
+            if (data?.detail) message = data.detail;
+          } catch {
+            // not JSON — keep the generic message
+          }
           if (targetSessionId === activeId) {
             statusRow.remove();
-            addMessage("system", "Error: " + err);
+            addMessage("system", "Error: " + message);
           }
           return;
         }
@@ -1802,9 +1812,17 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: authEmailEl.value.trim(), password: authPasswordEl.value }),
         });
-        const data = await res.json();
-        if (!res.ok) {
-          authErrorEl.textContent = data.detail || "Something went wrong.";
+        // A non-JSON body here (e.g. an HTML error page from an upstream
+        // proxy) would otherwise throw inside the outer catch and surface a
+        // raw "Unexpected token '<'..." parse error to the user.
+        let data = null;
+        try {
+          data = await res.json();
+        } catch {
+          // fall through to the generic message below
+        }
+        if (!res.ok || !data) {
+          authErrorEl.textContent = data?.detail || "Something went wrong. Please try again.";
           return;
         }
         authToken = data.token;
