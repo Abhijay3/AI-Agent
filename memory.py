@@ -7,7 +7,16 @@ import redis
 # Unlike our JSON file, it supports many keys at once (one per user/session),
 # concurrent access from multiple processes, and optional expiry (TTL).
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
-redis_client = redis.Redis(host=REDIS_HOST, port=6379, decode_responses=True)
+# Local/Docker Compose Redis has no auth or TLS, so REDIS_HOST alone is
+# enough. Hosted Redis (e.g. Upstash, used for the free Render deployment)
+# requires a full connection URL with TLS and a password baked in — set
+# REDIS_URL for that case instead of REDIS_HOST.
+REDIS_URL = os.environ.get("REDIS_URL")
+redis_client = (
+    redis.from_url(REDIS_URL, decode_responses=True)
+    if REDIS_URL
+    else redis.Redis(host=REDIS_HOST, port=6379, decode_responses=True)
+)
 
 
 def load_history(user_id: str, session_id: str) -> list:

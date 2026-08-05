@@ -25,7 +25,7 @@ from auth import (
     get_user_id_for_token,
     verify_password,
 )
-from memory import REDIS_HOST, delete_history, load_history, save_history
+from memory import REDIS_HOST, REDIS_URL, delete_history, load_history, save_history
 from rag import ingest_docs
 from schemas import (
     AuthResponse,
@@ -71,7 +71,7 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-API-Key", "Authorization"],
 )
 
-limiter = Limiter(key_func=get_remote_address, storage_uri=f"redis://{REDIS_HOST}:6379")
+limiter = Limiter(key_func=get_remote_address, storage_uri=REDIS_URL or f"redis://{REDIS_HOST}:6379")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
