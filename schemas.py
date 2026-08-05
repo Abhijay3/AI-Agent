@@ -1,10 +1,30 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 
 class ChatRequest(BaseModel):
     session_id: str = Field(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
-    user_id: str = Field(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
     message: str = Field(..., min_length=1, max_length=2000)
+
+
+class SignupRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128)
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class AuthResponse(BaseModel):
+    token: str
+    user_id: str
+    email: str
+
+
+class MeResponse(BaseModel):
+    user_id: str
+    email: str
 
 
 class ChatResponse(BaseModel):

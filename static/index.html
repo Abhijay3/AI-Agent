@@ -187,10 +187,112 @@
   /* ---------- app body: rail + drawer + main ---------- */
   #appBody {
     flex: 1;
-    display: flex;
+    display: none; /* shown by JS once auth is confirmed, avoids a flash of the app pre-login */
     min-height: 0;
     overflow: hidden;
   }
+
+  /* ---------- auth screen ---------- */
+  #authScreen {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .auth-card {
+    width: 100%;
+    max-width: 360px;
+    background: var(--surface);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius);
+    backdrop-filter: blur(16px);
+    padding: 30px 26px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 20px 60px -20px rgba(0, 0, 0, 0.6);
+  }
+  .auth-mark {
+    width: 44px; height: 44px;
+    font-size: 20px;
+    margin-bottom: 0;
+  }
+  .auth-title {
+    font-size: 18px;
+    font-weight: 800;
+    margin: 0;
+  }
+  .auth-tabs {
+    display: flex;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 999px;
+    padding: 3px;
+    width: 100%;
+  }
+  .auth-tab {
+    flex: 1;
+    padding: 8px 0;
+    border-radius: 999px;
+    border: none;
+    background: none;
+    color: var(--text-dim);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .auth-tab.active {
+    background: rgba(124, 92, 255, 0.2);
+    color: var(--text);
+  }
+  #authForm {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  #authForm input {
+    width: 100%;
+    padding: 11px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--surface-border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    font-size: 13.5px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  #authForm input:focus {
+    border-color: rgba(124, 92, 255, 0.55);
+    box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.15);
+  }
+  #authForm input::placeholder { color: var(--text-faint); }
+  #authError {
+    font-size: 12px;
+    color: var(--danger);
+    min-height: 14px;
+    text-align: center;
+  }
+  #authSubmit {
+    width: 100%;
+    padding: 11px 0;
+    border-radius: 12px;
+    border: none;
+    background: var(--accent-grad);
+    color: #0b0620;
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  #authSubmit:hover:not(:disabled) { filter: brightness(1.08); }
+  #authSubmit:disabled { opacity: 0.6; cursor: not-allowed; }
 
   #sidebar {
     position: fixed;
@@ -775,6 +877,23 @@
   <div class="nebula b"></div>
   <div class="nebula c"></div>
 
+  <div id="authScreen">
+    <div class="auth-card">
+      <div class="brand-mark auth-mark">A</div>
+      <h1 class="auth-title">Abhijay's AI</h1>
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab active" data-mode="login">Sign in</button>
+        <button type="button" class="auth-tab" data-mode="signup">Create account</button>
+      </div>
+      <form id="authForm">
+        <input id="authEmail" type="email" placeholder="Email" autocomplete="username" required />
+        <input id="authPassword" type="password" placeholder="Password" autocomplete="current-password" required minlength="8" />
+        <div id="authError"></div>
+        <button type="submit" id="authSubmit">Sign in</button>
+      </form>
+    </div>
+  </div>
+
   <div id="appBody">
     <div id="sidebarBackdrop"></div>
 
@@ -790,6 +909,9 @@
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2a3.5 3.5 0 0 0-3.5 3.5v.6A3 3 0 0 0 4 9v1a3 3 0 0 0 1 2.24V14a4 4 0 0 0 4 4v1a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-1a4 4 0 0 0 4-4v-1.76A3 3 0 0 0 20 10V9a3 3 0 0 0-2-2.83v-.67A3.5 3.5 0 0 0 14.5 2h-5z"/></svg>
       </button>
       <div class="rail-spacer"></div>
+      <button id="railLogout" class="rail-btn" type="button" title="Sign out">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
     </nav>
 
     <aside id="sidebar">
@@ -841,7 +963,14 @@
   </div>
 
   <script>
-    const API_KEY = "__APP_API_KEY__";
+    // ---------- auth (real accounts, not a shared key) ----------
+    const AUTH_TOKEN_KEY = "auth_token";
+    let authToken = localStorage.getItem(AUTH_TOKEN_KEY);
+    let userId = null; // set once /auth/me confirms the token, below
+
+    function authHeaders(extra) {
+      return Object.assign({ Authorization: `Bearer ${authToken}` }, extra || {});
+    }
 
     const chatEl = document.getElementById("chat");
     const chatWrapEl = document.getElementById("chatWrap");
@@ -897,20 +1026,9 @@
     // ---------- session (multi-chat) management ----------
     const SESSIONS_KEY = "chat_sessions";
     const ACTIVE_KEY = "active_session_id";
-    const USER_ID_KEY = "user_id";
 
     function newSessionId() {
       return "web-" + Math.random().toString(36).slice(2, 10);
-    }
-
-    // Stable per-browser identity, separate from session_id (which is per
-    // chat tab). All chat tabs on this browser share one user_id so
-    // remembered facts persist across every chat here — but never leak
-    // into a different browser/person's memory.
-    let userId = localStorage.getItem(USER_ID_KEY);
-    if (!userId) {
-      userId = "user-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-      localStorage.setItem(USER_ID_KEY, userId);
     }
 
     // ---------- "what I know about you" memory panel ----------
@@ -921,9 +1039,7 @@
 
     async function loadMemories() {
       try {
-        const res = await fetch(`/memories?user_id=${encodeURIComponent(userId)}`, {
-          headers: { "X-API-Key": API_KEY },
-        });
+        const res = await fetch("/memories", { headers: authHeaders() });
         if (!res.ok) return;
         const data = await res.json();
         renderMemories(data.memories || []);
@@ -960,9 +1076,9 @@
         del.addEventListener("click", async () => {
           del.disabled = true;
           try {
-            await fetch(`/memories/${encodeURIComponent(m.key)}?user_id=${encodeURIComponent(userId)}`, {
+            await fetch(`/memories/${encodeURIComponent(m.key)}`, {
               method: "DELETE",
-              headers: { "X-API-Key": API_KEY },
+              headers: authHeaders(),
             });
             loadMemories();
           } catch {
@@ -982,36 +1098,41 @@
       if (memoryPanelOpen) loadMemories();
     });
 
-    loadMemories();
+    // Sessions (chat tabs) are stored per-account, so switching accounts on
+    // the same browser never shows a different person's tab list.
+    function sessionsStorageKey() { return `${SESSIONS_KEY}:${userId}`; }
+    function activeStorageKey() { return `${ACTIVE_KEY}:${userId}`; }
 
     function loadSessions() {
       try {
-        const raw = localStorage.getItem(SESSIONS_KEY);
+        const raw = localStorage.getItem(sessionsStorageKey());
         if (raw) {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed) && parsed.length) return parsed;
         }
       } catch {}
-      // migrate from the old single-session storage format
-      const legacy = localStorage.getItem("session_id");
-      if (legacy) return [{ id: legacy, title: "Chat" }];
       return [];
     }
 
     function saveSessions() {
-      localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+      localStorage.setItem(sessionsStorageKey(), JSON.stringify(sessions));
     }
 
-    let sessions = loadSessions();
-    if (sessions.length === 0) {
-      sessions = [{ id: newSessionId(), title: "New chat" }];
+    let sessions = [];
+    let activeId = null;
+
+    function initSessions() {
+      sessions = loadSessions();
+      if (sessions.length === 0) {
+        sessions = [{ id: newSessionId(), title: "New chat" }];
+      }
+      activeId = localStorage.getItem(activeStorageKey());
+      if (!activeId || !sessions.some((s) => s.id === activeId)) {
+        activeId = sessions[0].id;
+      }
+      saveSessions();
+      localStorage.setItem(activeStorageKey(), activeId);
     }
-    let activeId = localStorage.getItem(ACTIVE_KEY);
-    if (!activeId || !sessions.some((s) => s.id === activeId)) {
-      activeId = sessions[0].id;
-    }
-    saveSessions();
-    localStorage.setItem(ACTIVE_KEY, activeId);
 
     function renderChatList() {
       chatListEl.innerHTML = "";
@@ -1087,9 +1208,7 @@
     async function loadActiveHistory() {
       chatEl.innerHTML = "";
       try {
-        const res = await fetch(`/history/${activeId}`, {
-          headers: { "X-API-Key": API_KEY },
-        });
+        const res = await fetch(`/history/${activeId}`, { headers: authHeaders() });
         if (res.ok) {
           const data = await res.json();
           if (data.messages.length === 0) {
@@ -1109,7 +1228,7 @@
       closeSidebar();
       if (id === activeId) return;
       activeId = id;
-      localStorage.setItem(ACTIVE_KEY, activeId);
+      localStorage.setItem(activeStorageKey(), activeId);
       setAttachment(null);
       renderChatList();
       await loadActiveHistory();
@@ -1124,10 +1243,7 @@
 
     async function deleteSession(id) {
       try {
-        await fetch(`/history/${id}`, {
-          method: "DELETE",
-          headers: { "X-API-Key": API_KEY },
-        });
+        await fetch(`/history/${id}`, { method: "DELETE", headers: authHeaders() });
       } catch {}
 
       sessions = sessions.filter((s) => s.id !== id);
@@ -1138,7 +1254,7 @@
 
       if (id === activeId) {
         activeId = sessions[0].id;
-        localStorage.setItem(ACTIVE_KEY, activeId);
+        localStorage.setItem(activeStorageKey(), activeId);
         renderChatList();
         await loadActiveHistory();
       } else {
@@ -1470,7 +1586,7 @@
         form.append("file", file);
         const res = await fetch("/upload", {
           method: "POST",
-          headers: { "X-API-Key": API_KEY },
+          headers: authHeaders(),
           body: form,
         });
         if (!res.ok) {
@@ -1554,11 +1670,8 @@
       try {
         const res = await fetch("/chat/stream", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-API-Key": API_KEY,
-          },
-          body: JSON.stringify({ session_id: targetSessionId, user_id: userId, message: payload }),
+          headers: authHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ session_id: targetSessionId, message: payload }),
         });
 
         if (!res.ok || !res.body) {
@@ -1637,8 +1750,108 @@
 
     sendBtn.addEventListener("click", sendMessage);
 
-    renderChatList();
-    loadActiveHistory();
+    // ---------- auth screen wiring ----------
+    const authScreenEl = document.getElementById("authScreen");
+    const appBodyEl = document.getElementById("appBody");
+    const authFormEl = document.getElementById("authForm");
+    const authEmailEl = document.getElementById("authEmail");
+    const authPasswordEl = document.getElementById("authPassword");
+    const authErrorEl = document.getElementById("authError");
+    const authSubmitEl = document.getElementById("authSubmit");
+    const authTabs = document.querySelectorAll(".auth-tab");
+    const railLogout = document.getElementById("railLogout");
+
+    let authMode = "login";
+
+    function showAuthScreen() {
+      authScreenEl.style.display = "flex";
+      appBodyEl.style.display = "none";
+    }
+
+    function showApp() {
+      authScreenEl.style.display = "none";
+      appBodyEl.style.display = "flex";
+    }
+
+    function initApp() {
+      initSessions();
+      renderChatList();
+      loadActiveHistory();
+      loadMemories();
+    }
+
+    authTabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        authTabs.forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        authMode = tab.dataset.mode;
+        authSubmitEl.textContent = authMode === "login" ? "Sign in" : "Create account";
+        authErrorEl.textContent = "";
+      });
+    });
+
+    authFormEl.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      authErrorEl.textContent = "";
+      authSubmitEl.disabled = true;
+
+      try {
+        const res = await fetch(authMode === "login" ? "/auth/login" : "/auth/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: authEmailEl.value.trim(), password: authPasswordEl.value }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          authErrorEl.textContent = data.detail || "Something went wrong.";
+          return;
+        }
+        authToken = data.token;
+        userId = data.user_id;
+        localStorage.setItem(AUTH_TOKEN_KEY, authToken);
+        authPasswordEl.value = "";
+        showApp();
+        initApp();
+      } catch (err) {
+        authErrorEl.textContent = "Network error: " + err.message;
+      } finally {
+        authSubmitEl.disabled = false;
+      }
+    });
+
+    railLogout.addEventListener("click", async () => {
+      try {
+        await fetch("/auth/logout", { method: "POST", headers: authHeaders() });
+      } catch {}
+      authToken = null;
+      userId = null;
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      showAuthScreen();
+    });
+
+    async function checkAuthAndInit() {
+      if (!authToken) {
+        showAuthScreen();
+        return;
+      }
+      try {
+        const res = await fetch("/auth/me", { headers: authHeaders() });
+        if (!res.ok) {
+          authToken = null;
+          localStorage.removeItem(AUTH_TOKEN_KEY);
+          showAuthScreen();
+          return;
+        }
+        const data = await res.json();
+        userId = data.user_id;
+        showApp();
+        initApp();
+      } catch {
+        showAuthScreen();
+      }
+    }
+
+    checkAuthAndInit();
   </script>
 </body>
 </html>

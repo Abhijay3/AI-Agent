@@ -34,6 +34,12 @@ CREATE TABLE IF NOT EXISTS memories (
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (user_id, key)
 );
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 PRODUCTS = [
@@ -103,6 +109,7 @@ def reset_db(path: str = DB_PATH) -> None:
         cur.execute("DROP TABLE IF EXISTS orders")
         cur.execute("DROP TABLE IF EXISTS tickets")
         cur.execute("DROP TABLE IF EXISTS memories")
+        cur.execute("DROP TABLE IF EXISTS users")
         conn.commit()
     finally:
         conn.close()

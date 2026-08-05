@@ -16,7 +16,7 @@ RUN playwright install --with-deps chromium
 # doesn't have to fetch it over the network on first request (was ~75s).
 RUN python -c "from chromadb.utils.embedding_functions import DefaultEmbeddingFunction; DefaultEmbeddingFunction()(['warm'])"
 
-COPY agent_core.py api.py memory.py rag.py schemas.py setup_db.py tools.py ./
+COPY agent_core.py api.py auth.py memory.py rag.py schemas.py setup_db.py tools.py ./
 COPY docs/ ./docs/
 COPY static/ ./static/
 COPY uploads/ ./uploads/
