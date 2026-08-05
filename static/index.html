@@ -1162,10 +1162,10 @@
     }
 
     const WELCOME_PROMPTS = [
-      { icon: "📦", text: "Check the status of order #1001 for alex@example.com" },
-      { icon: "🎫", text: "I need to file a support ticket about a broken keyboard" },
-      { icon: "🧮", text: "What is 482 × 17?" },
-      { icon: "🌦️", text: "What's the weather like in Tokyo right now?" },
+      { icon: "📦", text: "Where is my order? It still hasn't arrived" },
+      { icon: "🔄", text: "I want to return or exchange something I bought" },
+      { icon: "⚠️", text: "My item arrived damaged or isn't working" },
+      { icon: "💳", text: "I have a question about a charge on my account" },
     ];
 
     function renderWelcomeScreen() {
@@ -1193,7 +1193,8 @@
         btn.textContent = `${p.icon}  ${p.text}`;
         btn.addEventListener("click", () => {
           inputEl.value = p.text;
-          sendMessage();
+          inputEl.focus();
+          inputEl.dispatchEvent(new Event("input")); // grow the textarea to fit the text
         });
         prompts.appendChild(btn);
       }
