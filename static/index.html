@@ -93,39 +93,67 @@
     .nebula { animation: none !important; }
   }
 
-  /* ---------- header ---------- */
-  header {
-    padding: 14px 24px;
+  /* ---------- icon rail ---------- */
+  #iconRail {
+    width: 64px;
+    flex-shrink: 0;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    background: rgba(8, 5, 20, 0.55);
-    backdrop-filter: blur(16px);
-    border-bottom: 1px solid var(--surface-border);
+    gap: 12px;
+    padding: 16px 0;
+    background: rgba(8, 5, 20, 0.4);
+    border-right: 1px solid var(--surface-border);
     z-index: 3;
   }
-  .brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
   .brand-mark {
-    width: 30px; height: 30px;
-    border-radius: 9px;
+    width: 34px; height: 34px;
+    border-radius: 10px;
     background: var(--accent-grad);
     box-shadow: 0 0 18px rgba(124, 92, 255, 0.55);
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 800;
     color: #0b0620;
+    margin-bottom: 4px;
   }
-  header h1 {
+  .rail-btn {
+    width: 40px; height: 40px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    border: none;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, transform 0.1s;
+  }
+  .rail-btn:hover { background: var(--surface-hover); color: var(--text); }
+  .rail-btn:active { transform: scale(0.94); }
+  .rail-btn.primary {
+    background: var(--accent-grad);
+    color: #0b0620;
+  }
+  .rail-btn.primary:hover { filter: brightness(1.08); }
+  .rail-spacer { flex: 1; }
+
+  /* ---------- top bar (inside main area) ---------- */
+  .mainHeader {
+    padding: 16px 24px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    z-index: 2;
+  }
+  .mainHeaderTitle {
     font-size: 15px;
-    margin: 0;
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: 0.2px;
   }
   .status {
@@ -156,41 +184,7 @@
     50% { opacity: 0.5; }
   }
 
-  /* ---------- ticker ---------- */
-  #ticker {
-    z-index: 3;
-    overflow: hidden;
-    background: rgba(124, 92, 255, 0.06);
-    border-bottom: 1px solid var(--surface-border);
-    padding: 7px 0;
-    flex-shrink: 0;
-  }
-  #tickerTrack {
-    display: flex;
-    width: max-content;
-    animation: ticker-scroll 34s linear infinite;
-  }
-  .tickerGroup {
-    display: flex;
-    gap: 36px;
-    padding-right: 36px;
-    flex-shrink: 0;
-  }
-  .tickerGroup span {
-    font-size: 12px;
-    color: var(--text-dim);
-    letter-spacing: 0.2px;
-    white-space: nowrap;
-  }
-  @keyframes ticker-scroll {
-    from { transform: translateX(0); }
-    to { transform: translateX(-50%); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    #tickerTrack { animation: none; }
-  }
-
-  /* ---------- app body: sidebar + main ---------- */
+  /* ---------- app body: rail + drawer + main ---------- */
   #appBody {
     flex: 1;
     display: flex;
@@ -199,17 +193,24 @@
   }
 
   #sidebar {
-    width: 250px;
-    flex-shrink: 0;
+    position: fixed;
+    inset: 0 auto 0 0;
+    height: 100%;
+    width: min(82vw, 300px);
     display: flex;
     flex-direction: column;
     gap: 10px;
     padding: 14px 10px;
-    background: rgba(8, 5, 20, 0.4);
+    background: rgba(8, 5, 20, 0.65);
+    backdrop-filter: blur(16px);
     border-right: 1px solid var(--surface-border);
     overflow-y: auto;
-    z-index: 2;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 20;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
   }
+  #sidebar.open { transform: translateX(0); }
 
   #newChatBtn {
     display: flex;
@@ -401,8 +402,9 @@
     color: #0b0620;
   }
   .welcome-title {
-    font-size: 21px;
-    font-weight: 700;
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -0.3px;
     margin: 0;
   }
   .welcome-sub {
@@ -751,21 +753,6 @@
     border-radius: 8px;
   }
 
-  /* ---------- mobile sidebar toggle ---------- */
-  #sidebarToggle {
-    display: none;
-    align-items: center;
-    justify-content: center;
-    width: 32px; height: 32px;
-    flex-shrink: 0;
-    border-radius: 9px;
-    border: 1px solid var(--surface-border);
-    background: var(--surface);
-    color: var(--text);
-    cursor: pointer;
-  }
-  #sidebarToggle:hover { background: var(--surface-hover); }
-
   #sidebarBackdrop {
     display: none;
     position: fixed;
@@ -774,21 +761,6 @@
     z-index: 15;
   }
   #sidebarBackdrop.show { display: block; }
-
-  @media (max-width: 720px) {
-    #sidebarToggle { display: flex; }
-    #sidebar {
-      position: fixed;
-      inset: 0 auto 0 0;
-      height: 100%;
-      width: min(80vw, 300px);
-      transform: translateX(-100%);
-      transition: transform 0.25s ease;
-      z-index: 20;
-      box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
-    }
-    #sidebar.open { transform: translateX(0); }
-  }
 
   /* ---------- keyboard focus ---------- */
   button:focus-visible {
@@ -803,45 +775,23 @@
   <div class="nebula b"></div>
   <div class="nebula c"></div>
 
-  <header>
-    <div class="brand">
-      <button id="sidebarToggle" type="button" aria-label="Toggle chat list">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-      </button>
-      <div class="brand-mark">A</div>
-      <h1>Abhijay's AI</h1>
-    </div>
-    <div class="status">
-      <span id="statusDot" class="status-dot"></span>
-      <span id="statusText">connecting…</span>
-    </div>
-  </header>
-
-  <div id="ticker">
-    <div id="tickerTrack">
-      <div class="tickerGroup">
-        <span>🟢 Live order status lookups</span>
-        <span>🎫 Instant support ticket filing</span>
-        <span>📄 PDF analysis via upload</span>
-        <span>🔎 Real-time web search</span>
-        <span>🧮 Built-in calculator</span>
-        <span>🌦️ Live weather lookups</span>
-        <span>⚡ Streaming responses</span>
-      </div>
-      <div class="tickerGroup" aria-hidden="true">
-        <span>🟢 Live order status lookups</span>
-        <span>🎫 Instant support ticket filing</span>
-        <span>📄 PDF analysis via upload</span>
-        <span>🔎 Real-time web search</span>
-        <span>🧮 Built-in calculator</span>
-        <span>🌦️ Live weather lookups</span>
-        <span>⚡ Streaming responses</span>
-      </div>
-    </div>
-  </div>
-
   <div id="appBody">
     <div id="sidebarBackdrop"></div>
+
+    <nav id="iconRail">
+      <div class="brand-mark" title="Abhijay's AI">A</div>
+      <button id="railNewChat" class="rail-btn primary" type="button" title="New chat">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <button id="railHistoryToggle" class="rail-btn" type="button" title="Chat history">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </button>
+      <button id="railMemoryToggle" class="rail-btn" type="button" title="What I know about you">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2a3.5 3.5 0 0 0-3.5 3.5v.6A3 3 0 0 0 4 9v1a3 3 0 0 0 1 2.24V14a4 4 0 0 0 4 4v1a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-1a4 4 0 0 0 4-4v-1.76A3 3 0 0 0 20 10V9a3 3 0 0 0-2-2.83v-.67A3.5 3.5 0 0 0 14.5 2h-5z"/></svg>
+      </button>
+      <div class="rail-spacer"></div>
+    </nav>
+
     <aside id="sidebar">
       <button id="newChatBtn" type="button">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -858,6 +808,13 @@
     </aside>
 
     <main id="mainArea">
+      <div class="mainHeader">
+        <span class="mainHeaderTitle">Abhijay's AI</span>
+        <div class="status">
+          <span id="statusDot" class="status-dot"></span>
+          <span id="statusText">connecting…</span>
+        </div>
+      </div>
       <div id="chatWrap">
         <div id="chat"></div>
       </div>
@@ -900,10 +857,12 @@
     const chatListEl = document.getElementById("chatList");
     const newChatBtn = document.getElementById("newChatBtn");
     const sidebarEl = document.getElementById("sidebar");
-    const sidebarToggle = document.getElementById("sidebarToggle");
     const sidebarBackdrop = document.getElementById("sidebarBackdrop");
+    const railNewChat = document.getElementById("railNewChat");
+    const railHistoryToggle = document.getElementById("railHistoryToggle");
+    const railMemoryToggle = document.getElementById("railMemoryToggle");
 
-    // ---------- mobile sidebar open/close ----------
+    // ---------- sidebar drawer open/close (rail-triggered, all sizes) ----------
     function openSidebar() {
       sidebarEl.classList.add("open");
       sidebarBackdrop.classList.add("show");
@@ -912,8 +871,13 @@
       sidebarEl.classList.remove("open");
       sidebarBackdrop.classList.remove("show");
     }
-    sidebarToggle.addEventListener("click", () => {
+    railHistoryToggle.addEventListener("click", () => {
       sidebarEl.classList.contains("open") ? closeSidebar() : openSidebar();
+    });
+    railMemoryToggle.addEventListener("click", () => {
+      openSidebar();
+      document.getElementById("memoryList").classList.add("open");
+      loadMemories();
     });
     sidebarBackdrop.addEventListener("click", closeSidebar);
 
@@ -1192,6 +1156,7 @@
     }
 
     newChatBtn.addEventListener("click", startNewChat);
+    railNewChat.addEventListener("click", startNewChat);
 
     // ---------- starfield ----------
     (function initStars() {
