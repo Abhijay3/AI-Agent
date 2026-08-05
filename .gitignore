@@ -7,6 +7,10 @@ chroma_db/
 chat_history.json
 .DS_Store
 store.db.snapshot
+store.db-shm
+store.db-wal
+.cache/
+.local/
 
 # User-uploaded PDFs are runtime data, not source — keep the seed file only.
 uploads/*

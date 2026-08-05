@@ -66,6 +66,18 @@ def ensure_seeded(path: str = DB_PATH) -> None:
     try:
         cur = conn.cursor()
 
+        # WAL mode persists in the database file itself, so setting it here
+        # (called on every startup) covers every later sqlite3.connect(path)
+        # call throughout the app. Needed because the app opens a fresh
+        # short-lived connection per request rather than sharing one — under
+        # the default rollback-journal mode that pattern hits spurious
+        # "database is locked" errors on Linux/Docker (reproduced under the
+        # real auth flow: signup, then an immediate duplicate-signup attempt,
+        # then a third connection for cleanup — three rapid sequential
+        # connections was enough to collide). WAL allows concurrent readers
+        # alongside a writer and is the standard fix for this access pattern.
+        cur.execute("PRAGMA journal_mode=WAL")
+
         # One-time migration: memories used to be global (no user_id column,
         # `key` alone as the primary key). Drop and recreate it if an old-
         # shaped table is still around — it only ever held pre-launch test

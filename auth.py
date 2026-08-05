@@ -28,6 +28,12 @@ def create_user(email: str, password: str) -> int:
                 (normalized_email, hash_password(password)),
             )
         except sqlite3.IntegrityError:
+            # The failed INSERT leaves an implicit transaction open on this
+            # connection; roll it back explicitly before closing, or the
+            # abandoned transaction can hold a write lock long enough for
+            # the very next connection (e.g. a concurrent request) to hit
+            # "database is locked" even though this one already failed.
+            conn.rollback()
             raise ValueError("An account with that email already exists.")
         conn.commit()
         return cur.lastrowid
