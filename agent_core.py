@@ -1,9 +1,10 @@
 import json
+import logging
 import os
 import re
 
 from dotenv import load_dotenv
-from openai import BadRequestError, OpenAI
+from openai import BadRequestError, OpenAI, RateLimitError
 
 from rag import retrieve
 from tools import (
@@ -21,6 +22,8 @@ from tools import (
 )
 
 load_dotenv()
+
+logger = logging.getLogger("acme_support_agent")
 
 client = OpenAI(
     base_url="https://api.groq.com/openai/v1",
@@ -226,6 +229,26 @@ TOOL_FUNCTIONS = {
 
 MAX_RETRIES = 3
 
+# Groq's free tier caps tokens-per-minute per model. Resending the *entire*
+# conversation on every turn (as we used to) makes token usage grow with
+# session length, so long chats would hit that cap more and more often. Cap
+# how much history is replayed to the model — the full history still stays
+# in Redis/the UI, this only bounds what gets sent as context.
+MAX_HISTORY_MESSAGES = 20
+
+
+def _trim_history(messages: list) -> list:
+    if len(messages) <= MAX_HISTORY_MESSAGES:
+        return messages
+    trimmed = messages[-MAX_HISTORY_MESSAGES:]
+    # A "user" message always starts a fresh turn, so cutting there can't
+    # split an assistant/tool_calls sequence from its tool results — Groq
+    # rejects a tool message whose triggering assistant message is missing.
+    for i, m in enumerate(trimmed):
+        if m.get("role") == "user":
+            return trimmed[i:]
+    return trimmed
+
 
 def call_model_stream(messages: list):
     last_error = None
@@ -303,11 +326,21 @@ def stream_turn(messages: list, user_id: str):
     retry_count = 0
 
     while True:
-        api_messages = [system_message] + messages
+        api_messages = [system_message] + _trim_history(messages)
         try:
             stream = call_model_stream(api_messages)
         except BadRequestError:
             fallback = "Sorry, I couldn't process that. Could you rephrase, or be more specific (e.g. name a city)?"
+            messages.append({"role": "assistant", "content": fallback})
+            yield {"event": "token", "text": fallback}
+            return
+        except RateLimitError:
+            # Groq's free tier has a strict per-minute token budget shared
+            # across all requests. The raw error body names the limit and
+            # token counts, which reads like garbled text to a customer —
+            # give them something actionable instead.
+            logger.warning("Groq rate limit hit")
+            fallback = "I'm getting a lot of requests right now and hit the free plan's rate limit. Please wait about a minute and try again."
             messages.append({"role": "assistant", "content": fallback})
             yield {"event": "token", "text": fallback}
             return
@@ -355,7 +388,16 @@ def stream_turn(messages: list, user_id: str):
             if not content and not tool_calls_acc and retry_count < MAX_RETRIES - 1:
                 retry_count += 1
                 continue
-            yield {"event": "error", "message": str(e)}
+            # str(e) on an API error is a raw error body (status codes, limit
+            # numbers, etc.) — log it for debugging but never show it as-is,
+            # it reads like garbled text in the chat.
+            logger.warning("stream_turn mid-stream failure: %s", e)
+            message = (
+                "I'm getting a lot of requests right now and hit the free plan's rate limit. Please wait about a minute and try again."
+                if isinstance(e, RateLimitError)
+                else "Sorry, something went wrong generating a response. Please try again."
+            )
+            yield {"event": "error", "message": message}
             return
 
         retry_count = 0

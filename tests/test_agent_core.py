@@ -1,10 +1,13 @@
 import os
 from types import SimpleNamespace
 
+import httpx
+
 os.environ.setdefault("GROQ_API_KEY", "test-groq-key")
 os.environ.setdefault("TAVILY_API_KEY", "test-tavily-key")
 
 import agent_core  # noqa: E402
+from openai import RateLimitError  # noqa: E402
 
 
 def make_chunk(content=None, tool_calls=None):
@@ -121,7 +124,11 @@ def test_stream_turn_gives_up_after_max_retries(monkeypatch):
     messages = [{"role": "user", "content": "hi"}]
     events = list(agent_core.stream_turn(messages, "u1"))
 
-    assert events == [{"event": "error", "message": "still broken"}]
+    # The raw exception text isn't shown to the user (it can contain API
+    # error internals) — only a generic, friendly message is.
+    assert events == [
+        {"event": "error", "message": "Sorry, something went wrong generating a response. Please try again."}
+    ]
 
 
 def test_run_turn_wraps_stream_turn(monkeypatch):
@@ -132,3 +139,80 @@ def test_run_turn_wraps_stream_turn(monkeypatch):
     reply = agent_core.run_turn(messages, "u1")
 
     assert reply == "plain answer"
+
+
+def make_rate_limit_error(message="rate limited"):
+    response = httpx.Response(429, request=httpx.Request("POST", "https://api.groq.com/x"))
+    return RateLimitError(message, response=response, body=None)
+
+
+def test_stream_turn_gives_friendly_message_on_rate_limit(monkeypatch):
+    def always_rate_limited(api_messages):
+        raise make_rate_limit_error()
+
+    monkeypatch.setattr(agent_core, "call_model_stream", always_rate_limited)
+
+    messages = [{"role": "user", "content": "hi"}]
+    events = list(agent_core.stream_turn(messages, "u1"))
+
+    assert events == [
+        {
+            "event": "token",
+            "text": "I'm getting a lot of requests right now and hit the free plan's rate limit. Please wait about a minute and try again.",
+        }
+    ]
+    assert messages[-1]["role"] == "assistant"
+
+
+def test_stream_turn_gives_friendly_message_on_mid_stream_rate_limit(monkeypatch):
+    def bad_gen():
+        raise make_rate_limit_error()
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(agent_core, "call_model_stream", lambda api_messages: bad_gen())
+
+    messages = [{"role": "user", "content": "hi"}]
+    events = list(agent_core.stream_turn(messages, "u1"))
+
+    assert events == [
+        {
+            "event": "error",
+            "message": "I'm getting a lot of requests right now and hit the free plan's rate limit. Please wait about a minute and try again.",
+        }
+    ]
+
+
+def test_trim_history_leaves_short_history_untouched():
+    messages = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]
+    assert agent_core._trim_history(messages) == messages
+
+
+def test_trim_history_caps_long_history_at_a_user_turn_boundary():
+    # Build more than MAX_HISTORY_MESSAGES turns; each turn is a user message
+    # followed by an assistant reply.
+    messages = []
+    for i in range(15):
+        messages.append({"role": "user", "content": f"question {i}"})
+        messages.append({"role": "assistant", "content": f"answer {i}"})
+
+    trimmed = agent_core._trim_history(messages)
+
+    assert len(trimmed) <= agent_core.MAX_HISTORY_MESSAGES
+    assert trimmed[0]["role"] == "user"
+    assert trimmed == messages[-len(trimmed):]
+
+
+def test_trim_history_does_not_split_a_tool_call_sequence():
+    # A user turn whose assistant reply used a tool spans 3 messages
+    # (user, assistant-with-tool_calls, tool) before the final assistant
+    # answer — trimming must never start mid-sequence.
+    messages = []
+    for i in range(8):
+        messages.append({"role": "user", "content": f"question {i}"})
+        messages.append({"role": "assistant", "content": None, "tool_calls": [{"id": f"c{i}"}]})
+        messages.append({"role": "tool", "tool_call_id": f"c{i}", "content": "result"})
+        messages.append({"role": "assistant", "content": f"answer {i}"})
+
+    trimmed = agent_core._trim_history(messages)
+
+    assert trimmed[0]["role"] == "user"
