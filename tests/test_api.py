@@ -6,6 +6,7 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
+import agent_core
 import api
 from setup_db import DB_PATH
 from tools import PDF_UPLOAD_DIR
@@ -84,6 +85,13 @@ def test_health_needs_no_auth(monkeypatch):
     res = client.get("/health")
     assert res.status_code == 200
     assert res.json() == {"status": "ok"}
+
+
+def test_tools_count_reports_the_real_registry_size(monkeypatch):
+    client = make_client(monkeypatch, authenticated=False)
+    res = client.get("/tools/count")
+    assert res.status_code == 200
+    assert res.json() == {"count": len(agent_core.tools)}
 
 
 def test_index_serves_html_with_no_key_placeholder(monkeypatch):

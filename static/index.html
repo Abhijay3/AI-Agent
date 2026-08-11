@@ -549,6 +549,39 @@
     white-space: pre-wrap;
   }
 
+  /* ---------- persistent tool-use transparency (not just the transient
+     "Searching the web…" status text — a lasting record of what actually
+     ran, visible even after the reply is done streaming) ---------- */
+  .ai-content-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .tools-used { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tool-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--surface-border);
+    background: var(--surface);
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  .tool-chip-spinner {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    border: 1.5px solid var(--text-faint);
+    border-top-color: var(--accent-2);
+    animation: chip-spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes chip-spin { to { transform: rotate(360deg); } }
+  .tool-chip.ok { border-color: rgba(52, 229, 168, 0.3); }
+  .tool-chip.ok .tool-chip-mark { color: var(--online); }
+  .tool-chip.error { border-color: rgba(255, 107, 129, 0.35); }
+  .tool-chip.error .tool-chip-mark { color: var(--danger); }
+  @media (prefers-reduced-motion: reduce) {
+    .tool-chip-spinner { animation: none; }
+  }
+
   /* ---------- markdown rendering inside AI bubbles ---------- */
   .bubble > *:first-child { margin-top: 0; }
   .bubble > *:last-child { margin-bottom: 0; }
@@ -605,6 +638,7 @@
     border-bottom: 1px dashed var(--text-faint);
   }
   .sources-row a:hover { color: var(--text); border-bottom-color: var(--text-dim); }
+  .sources-row .source-doc { color: var(--text-dim); }
 
   .table-wrap { overflow-x: auto; margin: 8px 0; }
   .bubble table {
@@ -1985,7 +2019,20 @@
         '<div class="sidebar-widget-title">AI Core Status</div>' +
         '<div class="sidebar-widget-row"><span>Web Search</span><span class="ok">Ready</span></div>' +
         '<div class="sidebar-widget-row"><span>Knowledge (RAG)</span><span class="ok">Ready</span></div>' +
-        '<div class="sidebar-widget-row"><span>Memory</span><span class="ok">Ready</span></div>';
+        '<div class="sidebar-widget-row"><span>Memory</span><span class="ok">Ready</span></div>' +
+        '<div class="sidebar-widget-row"><span>Tools Available</span><span class="tools-available-count">…</span></div>';
+
+      // A real count from the backend's actual tool registry, not a
+      // hand-maintained number that could silently drift out of sync —
+      // stays as "…" (honest "unknown"), never a guess, if this fails.
+      fetch("/tools/count")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.count == null) return;
+          const el = coreStatus.querySelector(".tools-available-count");
+          if (el) el.textContent = data.count;
+        })
+        .catch(() => {});
 
       const usage = document.createElement("div");
       usage.className = "sidebar-widget";
@@ -2709,15 +2756,53 @@
       row.appendChild(label);
 
       sources.forEach((s) => {
-        const link = document.createElement("a");
-        link.href = s.url;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = s.title || s.url;
-        row.appendChild(link);
+        // Web sources have a real url and render as a link; RAG/document
+        // sources are just a filename (nothing to link to) and render as
+        // plain text instead — an <a href="undefined"> would be a broken,
+        // clickable-looking dead link.
+        if (s.url) {
+          const link = document.createElement("a");
+          link.href = s.url;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.textContent = s.title || s.url;
+          row.appendChild(link);
+        } else {
+          const span = document.createElement("span");
+          span.className = "source-doc";
+          span.textContent = s.title;
+          row.appendChild(span);
+        }
       });
 
       bubble.appendChild(row);
+    }
+
+    // Persistent tool-use chips: a lasting record of what actually ran,
+    // appended to toolsRow and updated in place once each tool resolves —
+    // distinct from the transient "Searching the web…" status text, which
+    // gets overwritten by the next thing that happens.
+    function addToolChip(toolsRow, pendingToolChips, name) {
+      const chip = document.createElement("span");
+      chip.className = "tool-chip";
+      const spinner = document.createElement("span");
+      spinner.className = "tool-chip-spinner";
+      const label = document.createElement("span");
+      label.textContent = (TOOL_LABELS[name] || `⚙️ ${name}`).replace(/…$/, "");
+      chip.appendChild(spinner);
+      chip.appendChild(label);
+      toolsRow.appendChild(chip);
+      pendingToolChips.push(chip);
+    }
+
+    function resolveToolChip(pendingToolChips, ok) {
+      const chip = pendingToolChips.shift();
+      if (!chip) return; // defensive — shouldn't happen, tool_call/tool_result events are paired 1:1
+      chip.classList.add(ok ? "ok" : "error");
+      const mark = document.createElement("span");
+      mark.className = "tool-chip-mark";
+      mark.textContent = ok ? "✓" : "✗";
+      chip.querySelector(".tool-chip-spinner")?.replaceWith(mark);
     }
 
     function renderInline(text) {
@@ -3007,17 +3092,26 @@
       sendBtn.disabled = true;
 
       // placeholder AI row: starts as "thinking" dots, becomes tool-status
-      // text, then morphs into the streamed markdown answer.
+      // text, then morphs into the streamed markdown answer. toolsRow holds
+      // a persistent, growing record of which tools actually ran — separate
+      // from the transient status text, which keeps changing as the turn
+      // progresses.
       const statusRow = document.createElement("div");
       statusRow.className = "row ai";
       const avatar = document.createElement("div");
       avatar.className = "avatar ai";
       avatar.textContent = "A";
+      const contentCol = document.createElement("div");
+      contentCol.className = "ai-content-col";
+      const toolsRow = document.createElement("div");
+      toolsRow.className = "tools-used";
       const bubble = document.createElement("div");
       bubble.className = "bubble status-bubble";
       bubble.innerHTML = '<span class="tool-status">Thinking…</span> <span class="typing-dots"><span></span><span></span><span></span></span>';
+      contentCol.appendChild(toolsRow);
+      contentCol.appendChild(bubble);
       statusRow.appendChild(avatar);
-      statusRow.appendChild(bubble);
+      statusRow.appendChild(contentCol);
       chatEl.appendChild(statusRow);
       chatWrapEl.scrollTop = chatWrapEl.scrollHeight;
 
@@ -3025,6 +3119,7 @@
       let answerStarted = false;
       let settled = false;
       let sources = [];
+      const pendingToolChips = []; // FIFO — tool_call/tool_result events arrive in matching order
 
       try {
         const res = await fetch("/chat/stream", {
@@ -3077,6 +3172,15 @@
             if (evt.event === "tool_call") {
               bubble.className = "bubble status-bubble";
               bubble.innerHTML = `<span class="tool-status">${TOOL_LABELS[evt.tool] || "⚙️ Working…"}</span>`;
+              addToolChip(toolsRow, pendingToolChips, evt.tool);
+            } else if (evt.event === "tool_result") {
+              resolveToolChip(pendingToolChips, evt.ok);
+            } else if (evt.event === "client_action") {
+              // The backend is a cloud container — it can't open anything
+              // on the user's actual machine, only ask their browser to.
+              if (evt.action === "open_url" && evt.url) {
+                window.open(evt.url, "_blank", "noopener,noreferrer");
+              }
             } else if (evt.event === "token") {
               if (!answerStarted) {
                 answerStarted = true;
@@ -3098,10 +3202,12 @@
               statusRow.remove();
               addMessage("system", "Error: " + evt.message);
             } else if (evt.event === "sources") {
-              // De-dupe by URL in case the model searched more than once —
-              // rendered once, after streaming finishes, below.
+              // De-dupe by url (web sources) or title (RAG/document sources,
+              // which have no url) in case the model searched/retrieved more
+              // than once — rendered once, after streaming finishes, below.
               for (const s of evt.sources) {
-                if (!sources.some((existing) => existing.url === s.url)) sources.push(s);
+                const key = s.url || s.title;
+                if (!sources.some((existing) => (existing.url || existing.title) === key)) sources.push(s);
               }
             }
           }

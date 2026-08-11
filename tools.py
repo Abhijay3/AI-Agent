@@ -3,7 +3,9 @@ import os
 import socket
 import sqlite3
 import threading
+from datetime import datetime
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 from playwright.sync_api import Error as PlaywrightError
@@ -37,6 +39,14 @@ def calculator(operation: str, a: float, b: float) -> float:
             raise ValueError("Cannot divide by zero")
         return a / b
     raise ValueError(f"Unknown operation: {operation}")
+
+
+def get_current_time(timezone: str = "UTC") -> str:
+    try:
+        tz = ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError, KeyError):
+        raise ValueError(f"Unknown timezone {timezone!r} — use an IANA name like 'Asia/Kolkata' or 'UTC'.")
+    return datetime.now(tz).strftime(f"%A, %B %d, %Y, %I:%M %p ({timezone})")
 
 
 def get_weather(city: str) -> str:
@@ -276,6 +286,19 @@ def _is_public_http_url(url: str) -> bool:
         ):
             return False
     return True
+
+
+def open_url(url: str) -> str:
+    # The backend has no way to open anything on the user's actual machine
+    # (it's a cloud container, not the user's Mac) — what it CAN honestly do
+    # is validate the link and hand it to the frontend, which opens it in a
+    # new browser tab client-side. Same public-URL check as browse_webpage:
+    # not for SSRF here (nothing is fetched server-side), but so the model
+    # can't be steered into pointing the user's browser at an internal/
+    # private address.
+    if not _is_public_http_url(url):
+        raise ValueError(f"Refusing to open non-public URL: {url}")
+    return f"Opened {url} in a new browser tab."
 
 
 def browse_webpage(url: str) -> str:

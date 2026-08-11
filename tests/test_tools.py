@@ -16,6 +16,8 @@ from tools import (  # noqa: E402
     create_support_ticket,
     forget_about_me,
     get_all_memories,
+    get_current_time,
+    open_url,
     read_pdf,
     remember_about_me,
     run_sql_query,
@@ -33,6 +35,36 @@ def test_calculator_basic_ops():
 def test_calculator_divide_by_zero():
     with pytest.raises(ValueError):
         calculator("divide", 1, 0)
+
+
+def test_get_current_time_defaults_to_utc():
+    result = get_current_time()
+    assert "UTC" in result
+
+
+def test_get_current_time_accepts_iana_timezone():
+    result = get_current_time("Asia/Kolkata")
+    assert "Asia/Kolkata" in result
+
+
+def test_get_current_time_rejects_unknown_timezone():
+    with pytest.raises(ValueError):
+        get_current_time("Not/ARealZone")
+
+
+def test_open_url_allows_public_url():
+    result = open_url("https://example.com")
+    assert "https://example.com" in result
+
+
+def test_open_url_blocks_non_public_url():
+    with pytest.raises(ValueError):
+        open_url("http://127.0.0.1:8000")
+
+
+def test_open_url_blocks_non_http_scheme():
+    with pytest.raises(ValueError):
+        open_url("javascript:alert(1)")
 
 
 def test_run_sql_query_blocks_non_select():

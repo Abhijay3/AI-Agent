@@ -13,3 +13,4 @@ slowapi==0.1.9
 python-multipart==0.0.20
 bcrypt==5.0.0
 email-validator==2.3.0
+tzdata==2025.2

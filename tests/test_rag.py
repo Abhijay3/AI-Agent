@@ -1,6 +1,6 @@
 import pytest
 
-from rag import ingest_docs, retrieve
+from rag import ingest_docs, retrieve, retrieve_with_sources
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -40,3 +40,23 @@ def test_ingest_docs_splits_multi_paragraph_files_into_separate_chunks():
     docs = retrieve("is the wireless mouse compatible with mac")
     assert any("wireless mouse" in d.lower() for d in docs)
     assert not any("monitor 27in ($249.99)" in d.lower() for d in docs)
+
+
+def test_retrieve_with_sources_names_the_matching_file():
+    docs, sources = retrieve_with_sources("what is your return policy")
+    assert docs
+    assert {"title": "returns_refunds_policy.txt"} in sources
+
+
+def test_retrieve_with_sources_empty_for_irrelevant_query():
+    docs, sources = retrieve_with_sources("write a react login component")
+    assert docs == []
+    assert sources == []
+
+
+def test_retrieve_with_sources_dedupes_same_file_across_chunks():
+    # A query matching multiple chunks from the same file should only name
+    # that file once, not once per chunk.
+    _docs, sources = retrieve_with_sources("what warranty and returns do I get")
+    titles = [s["title"] for s in sources]
+    assert len(titles) == len(set(titles))

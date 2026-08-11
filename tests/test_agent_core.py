@@ -4,12 +4,24 @@ from datetime import date
 from types import SimpleNamespace
 
 import httpx
+import pytest
 
 os.environ.setdefault("GROQ_API_KEY", "test-groq-key")
 os.environ.setdefault("TAVILY_API_KEY", "test-tavily-key")
 
 import agent_core  # noqa: E402
 from openai import RateLimitError  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def no_rag_by_default(monkeypatch):
+    # Every test below that doesn't specifically care about RAG gets a
+    # deterministic "nothing matched" result instead of hitting the real
+    # ChromaDB collection — otherwise tests are coupled to incidental
+    # matches against whatever real company docs happen to exist (this bit
+    # a real test once: "list products" genuinely matches product_faq.txt).
+    # Tests that DO want to exercise RAG override this within their own body.
+    monkeypatch.setattr(agent_core, "retrieve_with_sources", lambda query: ([], []))
 
 
 def make_chunk(content=None, tool_calls=None):
@@ -26,9 +38,8 @@ def test_build_system_message_injects_remembered_facts(monkeypatch):
         "get_all_memories",
         lambda user_id: {"name": "Abhi", "role": "full stack developer"} if user_id == "u1" else {},
     )
-    monkeypatch.setattr(agent_core, "retrieve", lambda query: [])
 
-    system_message = agent_core._build_system_message([{"role": "user", "content": "hi"}], "u1")
+    system_message, _sources = agent_core._build_system_message([{"role": "user", "content": "hi"}], "u1")
 
     assert "- name: Abhi" in system_message["content"]
     assert "- role: full stack developer" in system_message["content"]
@@ -36,9 +47,8 @@ def test_build_system_message_injects_remembered_facts(monkeypatch):
 
 def test_build_system_message_handles_no_memories(monkeypatch):
     monkeypatch.setattr(agent_core, "get_all_memories", lambda user_id: {})
-    monkeypatch.setattr(agent_core, "retrieve", lambda query: [])
 
-    system_message = agent_core._build_system_message([{"role": "user", "content": "hi"}], "u1")
+    system_message, _sources = agent_core._build_system_message([{"role": "user", "content": "hi"}], "u1")
 
     assert "(nothing remembered yet)" in system_message["content"]
 
@@ -112,6 +122,63 @@ def test_stream_turn_emits_no_sources_event_for_non_search_tools(monkeypatch):
     assert not any(e["event"] == "sources" for e in events)
 
 
+def test_stream_turn_emits_sources_event_for_rag_match(monkeypatch):
+    monkeypatch.setattr(
+        agent_core, "retrieve_with_sources", lambda query: (["Leave policy text"], [{"title": "leave_policy.txt"}])
+    )
+    chunks = [make_chunk(content="You get 18 days a year.")]
+    monkeypatch.setattr(agent_core, "call_model_stream", lambda messages: iter(chunks))
+
+    messages = [{"role": "user", "content": "what's the leave policy?"}]
+    events = list(agent_core.stream_turn(messages, "u1"))
+
+    # RAG sources are known before the model even runs, so they arrive
+    # first — before any token of the answer.
+    assert events[0] == {"event": "sources", "sources": [{"title": "leave_policy.txt"}]}
+
+
+def test_stream_turn_emits_client_action_for_open_url(monkeypatch):
+    first_call_chunks = [
+        make_chunk(tool_calls=[make_tool_call_delta(0, call_id="call1", name="open_url", arguments='{"url":"https://example.com"}')]),
+    ]
+    second_call_chunks = [make_chunk(content="Opened it.")]
+    responses = [iter(first_call_chunks), iter(second_call_chunks)]
+    monkeypatch.setattr(agent_core, "call_model_stream", lambda messages: responses.pop(0))
+
+    messages = [{"role": "user", "content": "open example.com"}]
+    events = list(agent_core.stream_turn(messages, "u1"))
+
+    assert {"event": "client_action", "action": "open_url", "url": "https://example.com"} in events
+
+
+def test_stream_turn_emits_tool_result_event(monkeypatch):
+    first_call_chunks = [
+        make_chunk(tool_calls=[make_tool_call_delta(0, call_id="call1", name="calculator", arguments='{"operation":"add","a":2,"b":3}')]),
+    ]
+    second_call_chunks = [make_chunk(content="5")]
+    responses = [iter(first_call_chunks), iter(second_call_chunks)]
+    monkeypatch.setattr(agent_core, "call_model_stream", lambda messages: responses.pop(0))
+
+    messages = [{"role": "user", "content": "what is 2+3"}]
+    events = list(agent_core.stream_turn(messages, "u1"))
+
+    assert {"event": "tool_result", "tool": "calculator", "ok": True} in events
+
+
+def test_stream_turn_emits_tool_result_not_ok_when_tool_errors(monkeypatch):
+    first_call_chunks = [
+        make_chunk(tool_calls=[make_tool_call_delta(0, call_id="call1", name="calculator", arguments='{"operation":"divide","a":1,"b":0}')]),
+    ]
+    second_call_chunks = [make_chunk(content="Can't divide by zero.")]
+    responses = [iter(first_call_chunks), iter(second_call_chunks)]
+    monkeypatch.setattr(agent_core, "call_model_stream", lambda messages: responses.pop(0))
+
+    messages = [{"role": "user", "content": "what is 1/0"}]
+    events = list(agent_core.stream_turn(messages, "u1"))
+
+    assert {"event": "tool_result", "tool": "calculator", "ok": False} in events
+
+
 def test_stream_turn_runs_multiple_tool_calls_in_parallel(monkeypatch):
     first_call_chunks = [
         make_chunk(
@@ -157,7 +224,7 @@ def test_run_tool_catches_unexpected_exceptions(monkeypatch):
 
     result = agent_core._run_tool("calculator", '{"operation":"add","a":1,"b":1}', "u1")
 
-    assert result == ("Error: boom", None)
+    assert result == ("Error: boom", None, None)
 
 
 def test_run_tool_returns_sources_for_web_search(monkeypatch):
@@ -167,45 +234,77 @@ def test_run_tool_returns_sources_for_web_search(monkeypatch):
         lambda query: ("some search result text", [{"title": "Example", "url": "https://example.com"}]),
     )
 
-    content, sources = agent_core._run_tool("web_search", '{"query":"test"}', "u1")
+    content, sources, client_action = agent_core._run_tool("web_search", '{"query":"test"}', "u1")
 
     assert content == "some search result text"
     assert sources == [{"title": "Example", "url": "https://example.com"}]
+    assert client_action is None
 
 
 def test_run_tool_returns_no_sources_for_non_search_tools():
-    content, sources = agent_core._run_tool("calculator", '{"operation":"add","a":1,"b":1}', "u1")
+    content, sources, client_action = agent_core._run_tool("calculator", '{"operation":"add","a":1,"b":1}', "u1")
 
     assert content == "2"
     assert sources is None
+    assert client_action is None
+
+
+def test_run_tool_returns_client_action_for_open_url():
+    content, sources, client_action = agent_core._run_tool("open_url", '{"url":"https://example.com"}', "u1")
+
+    assert content == "Opened https://example.com in a new browser tab."
+    assert sources is None
+    assert client_action == {"action": "open_url", "url": "https://example.com"}
+
+
+def test_run_tool_open_url_rejects_non_public_url():
+    content, sources, client_action = agent_core._run_tool("open_url", '{"url":"http://127.0.0.1:8000"}', "u1")
+
+    assert content.startswith("Error:")
+    assert client_action is None
+
+
+def test_every_tool_has_a_risk_entry():
+    assert set(agent_core.TOOL_FUNCTIONS) == set(agent_core.TOOL_RISK)
 
 
 def test_build_system_message_includes_todays_date(monkeypatch):
     monkeypatch.setattr(agent_core, "get_all_memories", lambda user_id: {})
-    monkeypatch.setattr(agent_core, "retrieve", lambda query: [])
 
-    system_message = agent_core._build_system_message([{"role": "user", "content": "hi"}], "u1")
+    system_message, _sources = agent_core._build_system_message([{"role": "user", "content": "hi"}], "u1")
 
     assert date.today().isoformat() in system_message["content"]
 
 
 def test_build_system_message_omits_docs_block_when_nothing_relevant(monkeypatch):
     monkeypatch.setattr(agent_core, "get_all_memories", lambda user_id: {})
-    monkeypatch.setattr(agent_core, "retrieve", lambda query: [])
 
-    system_message = agent_core._build_system_message([{"role": "user", "content": "hi"}], "u1")
+    system_message, sources = agent_core._build_system_message([{"role": "user", "content": "hi"}], "u1")
 
     assert "Relevant company documents" not in system_message["content"]
+    assert sources == []
 
 
 def test_build_system_message_includes_docs_block_when_relevant(monkeypatch):
     monkeypatch.setattr(agent_core, "get_all_memories", lambda user_id: {})
-    monkeypatch.setattr(agent_core, "retrieve", lambda query: ["Some policy text"])
+    monkeypatch.setattr(
+        agent_core, "retrieve_with_sources", lambda query: (["Some policy text"], [{"title": "leave_policy.txt"}])
+    )
 
-    system_message = agent_core._build_system_message([{"role": "user", "content": "hi"}], "u1")
+    system_message, sources = agent_core._build_system_message([{"role": "user", "content": "hi"}], "u1")
 
     assert "Relevant company documents" in system_message["content"]
     assert "Some policy text" in system_message["content"]
+    assert sources == [{"title": "leave_policy.txt"}]
+
+
+def test_build_system_message_addresses_remembered_name_and_boss(monkeypatch):
+    monkeypatch.setattr(agent_core, "get_all_memories", lambda user_id: {"name": "Abhijay"})
+
+    system_message, _sources = agent_core._build_system_message([{"role": "user", "content": "hi"}], "u1")
+
+    assert "Abhijay" in system_message["content"]
+    assert "boss" in system_message["content"]
 
 
 def test_stream_turn_detects_leaked_pseudo_tool_call(monkeypatch):

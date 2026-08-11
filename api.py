@@ -16,6 +16,7 @@ from slowapi.util import get_remote_address
 from starlette.concurrency import iterate_in_threadpool
 
 from agent_core import run_turn, stream_turn
+from agent_core import tools as AGENT_TOOL_SCHEMAS
 from auth import (
     create_session,
     create_user,
@@ -116,6 +117,14 @@ def seed_knowledge_base() -> None:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/tools/count")
+def tools_count() -> dict:
+    # Backs the "Tools Available" widget on the landing page — a real count
+    # of what's registered in agent_core.tools, not a hand-maintained number
+    # that could silently drift out of sync with the actual tool list.
+    return {"count": len(AGENT_TOOL_SCHEMAS)}
 
 
 @app.get("/", response_class=HTMLResponse)

@@ -50,13 +50,34 @@ def ingest_docs(docs_dir: str = "docs") -> None:
     print(f"Ingested {len(paths)} documents into {len(ids)} chunks")
 
 
-def retrieve(query: str, n_results: int = 3) -> list:
+def retrieve_with_sources(query: str, n_results: int = 3) -> tuple:
+    """Returns (docs, sources). sources names which source file(s) actually
+    informed the answer, deduped and in relevance order — chunk ids are
+    "<filename>#<chunk index>", so the filename is the human-readable part."""
     if collection.count() == 0:
-        return []
+        return [], []
     results = collection.query(query_texts=[query], n_results=n_results)
     docs = results["documents"][0]
+    ids = results["ids"][0]
     distances = results["distances"][0]
-    return [doc for doc, dist in zip(docs, distances) if dist <= MAX_RELEVANT_DISTANCE]
+
+    kept_docs = []
+    sources = []
+    seen = set()
+    for doc, chunk_id, dist in zip(docs, ids, distances):
+        if dist > MAX_RELEVANT_DISTANCE:
+            continue
+        kept_docs.append(doc)
+        filename = chunk_id.rsplit("#", 1)[0]
+        if filename not in seen:
+            seen.add(filename)
+            sources.append({"title": filename})
+    return kept_docs, sources
+
+
+def retrieve(query: str, n_results: int = 3) -> list:
+    docs, _sources = retrieve_with_sources(query, n_results)
+    return docs
 
 
 if __name__ == "__main__":

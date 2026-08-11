@@ -9,7 +9,7 @@ from datetime import date
 from dotenv import load_dotenv
 from openai import BadRequestError, OpenAI, RateLimitError
 
-from rag import retrieve
+from rag import retrieve_with_sources
 from tools import (
     browse_webpage,
     calculator,
@@ -17,7 +17,9 @@ from tools import (
     create_support_ticket,
     forget_about_me,
     get_all_memories,
+    get_current_time,
     get_weather,
+    open_url,
     read_pdf,
     remember_about_me,
     run_sql_query,
@@ -222,13 +224,50 @@ tools = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_current_time",
+            "description": "Get the current date and time, optionally in a specific IANA timezone (e.g. 'Asia/Kolkata', 'America/New_York'). Defaults to UTC.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "timezone": {"type": "string"},
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_url",
+            "description": (
+                "Open a URL for the user in a new browser tab (e.g. a page found via "
+                "web_search, or a well-known site they asked for like 'open YouTube'). "
+                "This opens it in their current browser tab, not a separate application — "
+                "say so naturally if that distinction matters to what they asked."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string"},
+                },
+                "required": ["url"],
+                "additionalProperties": False,
+            },
+        },
+    },
 ]
 
 TOOL_FUNCTIONS = {
     "calculator": calculator,
     "get_weather": get_weather,
+    "get_current_time": get_current_time,
     "run_sql_query": run_sql_query,
     "web_search": web_search,
+    "open_url": open_url,
     "read_pdf": read_pdf,
     "browse_webpage": browse_webpage,
     "check_order_status": check_order_status,
@@ -236,6 +275,32 @@ TOOL_FUNCTIONS = {
     "remember_about_me": remember_about_me,
     "forget_about_me": forget_about_me,
 }
+
+# Every tool declares a risk level here, independent of whether it's
+# actually risky yet — nothing below is above "safe" today, since nothing
+# destructive/irreversible exists in this app. This is the extension point
+# for future tools that genuinely need a confirm-before-execute flow (e.g.
+# deleting a file, shutting down a machine): add the tool, mark
+# requires_confirmation=True, and the confirmation UX (not yet built,
+# since there's nothing to protect yet) plugs in without touching the
+# tool-calling loop itself. The assertion below is load-bearing, not
+# decorative — a new tool added without a risk entry fails at import time
+# instead of silently shipping unclassified.
+TOOL_RISK = {
+    "calculator": {"risk_level": "safe", "requires_confirmation": False},
+    "get_weather": {"risk_level": "safe", "requires_confirmation": False},
+    "get_current_time": {"risk_level": "safe", "requires_confirmation": False},
+    "run_sql_query": {"risk_level": "safe", "requires_confirmation": False},
+    "web_search": {"risk_level": "safe", "requires_confirmation": False},
+    "open_url": {"risk_level": "safe", "requires_confirmation": False},
+    "read_pdf": {"risk_level": "safe", "requires_confirmation": False},
+    "browse_webpage": {"risk_level": "safe", "requires_confirmation": False},
+    "check_order_status": {"risk_level": "safe", "requires_confirmation": False},
+    "create_support_ticket": {"risk_level": "low", "requires_confirmation": False},
+    "remember_about_me": {"risk_level": "safe", "requires_confirmation": False},
+    "forget_about_me": {"risk_level": "low", "requires_confirmation": False},
+}
+assert set(TOOL_FUNCTIONS) == set(TOOL_RISK), "every tool in TOOL_FUNCTIONS needs a TOOL_RISK entry"
 
 
 MAX_RETRIES = 3
@@ -269,18 +334,28 @@ def _trim_history(messages: list) -> list:
 
 
 def _run_tool(name: str, arguments_json: str, user_id: str) -> tuple:
-    """Returns (content_for_model, sources). sources is only ever non-None
-    for web_search, letting the UI show real citations instead of parsing
-    them back out of the prose the model reads."""
+    """Returns (content_for_model, sources, client_action).
+
+    sources is only ever non-None for web_search, letting the UI show real
+    citations instead of parsing them back out of the prose the model reads.
+
+    client_action signals something the frontend must do itself — the
+    backend is a cloud container, it cannot open a tab in the user's actual
+    browser, only ask it to. Only open_url sets this today; it's the same
+    extension point a future "run this on the desktop agent" action would
+    use once one exists.
+    """
     args = json.loads(arguments_json) if arguments_json else {}
     if name in ("remember_about_me", "forget_about_me"):
         args["user_id"] = user_id
     try:
         if name == "web_search":
             content, sources = web_search_with_sources(**args)
-            return content, sources
+            return content, sources, None
         function = TOOL_FUNCTIONS[name]
-        return str(function(**args)), None
+        content = str(function(**args))
+        client_action = {"action": "open_url", "url": args["url"]} if name == "open_url" else None
+        return content, None, client_action
     except Exception as e:
         # Tools raise ValueError for expected, already-friendly failures
         # (bad input, search/browse unavailable, etc). Anything else is an
@@ -288,7 +363,7 @@ def _run_tool(name: str, arguments_json: str, user_id: str) -> tuple:
         # the whole turn; either way the model sees "Error: ..." as its tool
         # result and can react gracefully instead of the request just dying.
         logger.warning("tool %s failed: %s", name, e)
-        return f"Error: {e}", None
+        return f"Error: {e}", None, None
 
 
 def call_model_stream(messages: list):
@@ -306,15 +381,18 @@ def call_model_stream(messages: list):
     raise last_error
 
 
-def _build_system_message(messages: list, user_id: str) -> dict:
+def _build_system_message(messages: list, user_id: str) -> tuple:
+    """Returns (system_message, rag_sources) — rag_sources lets the caller
+    show which company document(s) actually informed the answer, the same
+    way web_search results already get cited."""
     last_user_message = messages[-1]["content"]
 
     t0 = time.monotonic()
-    # retrieve() already filters out low-relevance chunks (see rag.py), so an
-    # empty result here means nothing in the company docs is actually about
-    # this question — omit the section entirely rather than handing the
-    # model a block of unrelated policy text to "ignore."
-    context_docs = retrieve(last_user_message)
+    # retrieve_with_sources() already filters out low-relevance chunks (see
+    # rag.py), so an empty result here means nothing in the company docs is
+    # actually about this question — omit the section entirely rather than
+    # handing the model a block of unrelated policy text to "ignore."
+    context_docs, rag_sources = retrieve_with_sources(last_user_message)
     logger.info("[RAG] %.2fs (%d chunk%s)", time.monotonic() - t0, len(context_docs), "" if len(context_docs) == 1 else "s")
     context_block = (
         "\n\nRelevant company documents (these were retrieved because they "
@@ -330,15 +408,34 @@ def _build_system_message(messages: list, user_id: str) -> dict:
         if memories
         else "(nothing remembered yet)"
     )
+    remembered_name = memories.get("name")
 
     today = date.today().isoformat()
 
-    return {
+    system_message = {
         "role": "system",
         "content": (
-            "You are a helpful customer support agent for Acme Corp. "
-            f"Today's date is {today} — use it to judge what's current and "
-            "to answer date-relative questions correctly.\n\n"
+            "You are Abhijay's AI — a personal AI assistant. Your tone is "
+            "calm, confident, concise, and a little futuristic: intelligent "
+            "and professional, not chatty or overly enthusiastic. Keep "
+            "replies tight — a sentence or two for simple things, more only "
+            "when the question actually needs it. Don't perform "
+            "helpfulness with filler ('Great question!', 'I'd be happy to "
+            "help!') — just help.\n"
+            + (
+                f"The person you're talking to is named {remembered_name} — address "
+                "them by name naturally sometimes, and occasionally (not every "
+                "message, that gets tiresome) as 'boss' for warmth.\n\n"
+                if remembered_name
+                else "You don't know this person's name yet — ask naturally if it "
+                "comes up, and once you learn it, save it with remember_about_me "
+                "so you address them by name in future replies. Until then, "
+                "'boss' works fine as an occasional warm address.\n\n"
+            )
+            + f"Today's date is {today} — use it to judge what's current and "
+            "to answer date-relative questions correctly. Use get_current_time "
+            "for the actual current time or a specific timezone rather than "
+            "guessing.\n\n"
             "How to decide whether to search the web (web_search tool):\n"
             "- For current events, news, prices, weather, sports results, "
             "stocks, or anything about a specific person/product/event that "
@@ -368,7 +465,13 @@ def _build_system_message(messages: list, user_id: str) -> dict:
             "numbers, dates, or details that aren't in what you retrieved. "
             "If sources disagree, say so instead of picking one silently.\n"
             "- When your answer relies on a search, briefly name the source "
-            "(e.g. the site name) so the user knows where it came from.\n\n"
+            "(e.g. the site name) so the user knows where it came from.\n"
+            "- If they ask you to open a page (search results, a site they "
+            "name), use open_url — it opens a new tab in their browser. You "
+            "cannot launch a native application (e.g. the actual Chrome.app "
+            "or VS Code) — that requires a local desktop agent this app "
+            "doesn't have yet. If asked to do that, say so plainly instead "
+            "of pretending to.\n\n"
             "Language: reply in whatever language/style the user wrote in. "
             "If they wrote in Hinglish, reply naturally in Hinglish — don't "
             "switch to formal Hindi or pure English. If they wrote in "
@@ -389,6 +492,7 @@ def _build_system_message(messages: list, user_id: str) -> dict:
             "to repeat it." + context_block
         ),
     }
+    return system_message, rag_sources
 
 
 def stream_turn(messages: list, user_id: str):
@@ -408,7 +512,9 @@ def stream_turn(messages: list, user_id: str):
     steered into reading or writing another user's memory.
     """
     turn_start = time.monotonic()
-    system_message = _build_system_message(messages, user_id)
+    system_message, rag_sources = _build_system_message(messages, user_id)
+    if rag_sources:
+        yield {"event": "sources", "sources": rag_sources}
     # Counts consecutive stream failures that happened before anything was
     # shown to the user, so they can be retried transparently (distinct
     # from the outer loop's normal tool-calling round trips, which reset
@@ -532,17 +638,24 @@ def stream_turn(messages: list, user_id: str):
         tools_start = time.monotonic()
         with ThreadPoolExecutor(max_workers=min(len(tool_calls_acc), MAX_PARALLEL_TOOL_CALLS)) as executor:
             futures = [
-                (acc["id"], executor.submit(_run_tool, acc["name"], acc["arguments"], user_id))
+                (acc["id"], acc["name"], executor.submit(_run_tool, acc["name"], acc["arguments"], user_id))
                 for acc in tool_calls_acc.values()
             ]
-            results = [(tool_call_id, future.result()) for tool_call_id, future in futures]
+            results = [(tool_call_id, name, future.result()) for tool_call_id, name, future in futures]
         logger.info(
             "[TOOLS] %.2fs (%d call%s)", time.monotonic() - tools_start, len(results), "" if len(results) == 1 else "s"
         )
 
-        for tool_call_id, (output, sources) in results:
+        for tool_call_id, name, (output, sources, client_action) in results:
             if sources:
                 yield {"event": "sources", "sources": sources}
+            if client_action:
+                yield {"event": "client_action", **client_action}
+            # Persistent, visible record of what actually ran (not just the
+            # transient "Searching the web…"-style status text) — lets the
+            # user see, after the fact, which tool was used and whether it
+            # succeeded, the same way a real assistant would show its work.
+            yield {"event": "tool_result", "tool": name, "ok": not output.startswith("Error:")}
             messages.append({"role": "tool", "tool_call_id": tool_call_id, "content": output})
         # loop back for the next model call now that tool results are in
 
