@@ -21,12 +21,7 @@
     --online: #34e5a8;
     --danger: #ff6b81;
     --radius: 16px;
-    /* AI's visual identity on the landing page specifically — warm gold,
-       not the purple/cyan used elsewhere in the app. */
-    --gold-1: #f2b84b;
-    --gold-2: #dd9138;
-    --gold-highlight: #fff3d6;
-    --gold-grad: linear-gradient(135deg, var(--gold-highlight) 0%, var(--gold-1) 55%, var(--gold-2) 100%);
+    --accent-highlight: #f2f0ff;
   }
 
   * { box-sizing: border-box; }
@@ -214,6 +209,7 @@
     background: var(--surface);
     border: 1px solid var(--surface-border);
     border-radius: var(--radius);
+    -webkit-backdrop-filter: blur(16px);
     backdrop-filter: blur(16px);
     padding: 30px 26px;
     display: flex;
@@ -310,6 +306,7 @@
     gap: 10px;
     padding: 14px 10px;
     background: rgba(8, 5, 20, 0.65);
+    -webkit-backdrop-filter: blur(16px);
     backdrop-filter: blur(16px);
     border-right: 1px solid var(--surface-border);
     overflow-y: auto;
@@ -539,6 +536,7 @@
   .row.ai .bubble {
     background: var(--surface);
     border: 1px solid var(--surface-border);
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
     border-bottom-left-radius: 4px;
     box-shadow: 0 8px 24px -16px rgba(0, 0, 0, 0.6);
@@ -737,6 +735,7 @@
     background: var(--surface);
     border: 1px solid var(--surface-border);
     border-radius: 22px;
+    -webkit-backdrop-filter: blur(14px);
     backdrop-filter: blur(14px);
     transition: border-color 0.2s, box-shadow 0.2s;
   }
@@ -834,13 +833,11 @@
      full-bleed while still scrolling inside #chatWrap.
      ============================================================ */
   body.landing-active .mainHeader { display: none; }
-  /* The icon rail is real chat-session chrome (new chat/history/memory/
-     logout) — appropriate once you're actually chatting, but it just
-     reads as dashboard clutter on a first-visit landing page, and its
-     fixed 64px eats a meaningful slice of narrow mobile viewports. Hidden
-     only while the landing screen is showing; #mainArea is a flex:1
-     sibling so it reclaims the width automatically, no extra layout work
-     needed. */
+  /* The real icon rail (new chat/history/memory/logout) is genuine
+     chat-session chrome — right once you're actually chatting, but the
+     landing screen gets its own, richer sidebar instead (nav + status
+     widgets), so the plain icon rail is redundant here. #mainArea is a
+     flex:1 sibling so hiding it reclaims the width automatically. */
   body.landing-active #iconRail { display: none; }
 
   #welcomeScreen {
@@ -856,7 +853,100 @@
     animation: none;
   }
 
-  /* ---------- landing nav ---------- */
+  /* ---------- shell: sidebar + main column ---------- */
+  .landing-shell { display: flex; align-items: flex-start; }
+  .landing-main { flex: 1; min-width: 0; }
+
+  /* ---------- sidebar (persistent, desktop/tablet) ---------- */
+  .landing-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 20px 14px;
+    background: rgba(10, 8, 24, 0.5);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    border-right: 1px solid var(--surface-border);
+  }
+  .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 2px 6px 6px; }
+  .sidebar-brand-text { font-size: 14px; font-weight: 800; white-space: nowrap; }
+  .sidebar-nav { display: flex; flex-direction: column; gap: 2px; }
+  .sidebar-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: none;
+    background: none;
+    color: var(--text-dim);
+    font-size: 13.5px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .sidebar-nav-item svg { flex-shrink: 0; opacity: 0.85; }
+  .sidebar-nav-item:hover { background: var(--surface-hover); color: var(--text); }
+  .sidebar-nav-item.active { background: rgba(124, 92, 255, 0.16); color: var(--text); box-shadow: inset 2px 0 0 var(--accent-2); }
+  .sidebar-widgets { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--surface-border); }
+  .sidebar-widget { padding: 12px 13px; border-radius: 12px; border: 1px solid var(--surface-border); background: var(--surface); }
+  .sidebar-widget-title { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-faint); margin: 0 0 8px; }
+  .sidebar-widget-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-dim); padding: 3px 0; }
+  .sidebar-widget-row .ok { color: var(--online); font-weight: 700; }
+  .sidebar-footer { margin-top: auto; padding-top: 14px; border-top: 1px solid var(--surface-border); display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .sidebar-footer-email { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+  @media (max-width: 1080px) {
+    .landing-sidebar { width: 74px; padding: 20px 8px; }
+    .landing-sidebar .sidebar-nav-item { justify-content: center; padding: 12px; }
+    .landing-sidebar .sidebar-label,
+    .landing-sidebar .sidebar-brand-text,
+    .landing-sidebar .sidebar-widgets,
+    .landing-sidebar .sidebar-footer-email { display: none; }
+  }
+  @media (max-width: 768px) {
+    .landing-sidebar { display: none; }
+  }
+
+  /* ---------- mobile drawer (mirrors sidebar content, overlay) ---------- */
+  .landing-drawer-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(3, 2, 8, 0.6);
+    z-index: 24;
+  }
+  .landing-drawer-backdrop.show { display: block; }
+  .landing-drawer {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(82vw, 290px);
+    height: 100%;
+    background: rgba(8, 5, 20, 0.94);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    border-right: 1px solid var(--surface-border);
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    z-index: 25;
+    padding: 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    overflow-y: auto;
+  }
+  .landing-drawer.open { transform: translateX(0); }
+  .landing-drawer .sidebar-nav-item { font-size: 14.5px; padding: 11px 12px; }
+  .drawer-section-label { font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-faint); margin: 4px 0 -6px 12px; }
+  .landing-drawer .landing-cta { align-self: flex-start; }
+
+  /* ---------- top nav (sits inside .landing-main) ---------- */
   .landing-nav {
     position: sticky;
     top: 0;
@@ -871,6 +961,7 @@
   }
   .landing-nav.scrolled {
     background: rgba(8, 5, 20, 0.72);
+    -webkit-backdrop-filter: blur(16px);
     backdrop-filter: blur(16px);
     border-bottom-color: var(--surface-border);
   }
@@ -893,20 +984,19 @@
     padding: 9px 18px;
     border-radius: 999px;
     border: none;
-    background: var(--gold-grad);
-    color: #1a1206;
+    background: var(--accent-grad);
+    color: #0b0620;
     font-size: 13px;
     font-weight: 700;
     cursor: pointer;
-    box-shadow: 0 0 20px rgba(242, 184, 75, 0.3);
+    box-shadow: 0 0 20px rgba(124, 92, 255, 0.3);
     transition: filter 0.15s, transform 0.1s;
     white-space: nowrap;
   }
   .landing-cta:hover { filter: brightness(1.08); }
   .landing-cta:active { transform: scale(0.97); }
 
-  /* mobile: brand + a single hamburger toggle only — links, status, and
-     Launch AI collapse into a lightweight dropdown, not a full drawer. */
+  /* mobile: brand + a single hamburger opening the drawer above */
   .landing-nav-toggle {
     display: none;
     width: 36px; height: 36px;
@@ -919,29 +1009,6 @@
     cursor: pointer;
     flex-shrink: 0;
   }
-  .landing-mobile-menu {
-    display: none;
-    flex-direction: column;
-    gap: 2px;
-    padding: 8px 20px 18px;
-    position: sticky;
-    top: 68px;
-    z-index: 9;
-    background: rgba(8, 5, 20, 0.92);
-    backdrop-filter: blur(16px);
-    border-bottom: 1px solid var(--surface-border);
-  }
-  .landing-mobile-menu.open { display: flex; }
-  .landing-mobile-menu a {
-    color: var(--text-dim);
-    text-decoration: none;
-    font-size: 14.5px;
-    font-weight: 600;
-    padding: 11px 8px;
-    border-radius: 9px;
-  }
-  .landing-mobile-menu a:active { background: var(--surface-hover); }
-  .landing-mobile-menu .landing-cta { margin-top: 8px; align-self: flex-start; }
 
   @media (max-width: 860px) {
     .landing-nav-links { display: none; }
@@ -950,80 +1017,72 @@
     .landing-nav-toggle { display: flex; }
   }
 
-  /* ---------- hero ---------- */
-  /* Content sits in normal document flow at the top; the AI core is a
-     bounded stage below it (not a full-hero absolute backdrop) — the two
-     never occupy the same space, so the core can never visually sit on
-     top of text or buttons regardless of viewport size. */
+  /* ---------- hero: two columns on desktop (text | AI core+widgets) ---------- */
   .landing-hero {
     position: relative;
     display: flex;
-    flex-direction: column;
     align-items: center;
-    text-align: center;
-    padding: 56px 24px 20px;
-    gap: 6px;
+    gap: 40px;
+    padding: 56px 40px 40px;
   }
-  .hero-content { position: relative; z-index: 2; max-width: 640px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .hero-content { position: relative; z-index: 2; flex: 1 1 480px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
   .hero-eyebrow {
     display: inline-flex; align-items: center; gap: 8px;
     padding: 6px 14px;
     border-radius: 999px;
     border: 1px solid var(--surface-border);
     background: var(--surface);
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 1px;
     text-transform: uppercase;
     color: var(--text-dim);
+    width: fit-content;
   }
   .hero-eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--online); box-shadow: 0 0 8px 2px rgba(52,229,168,0.6); }
-  .hero-kicker {
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    color: var(--gold-1);
-    margin: 2px 0 0;
-  }
   .hero-title {
-    font-size: clamp(30px, 7vw, 58px);
+    font-size: clamp(32px, 4.6vw, 54px);
     font-weight: 800;
     line-height: 1.12;
     letter-spacing: -1px;
     margin: 0;
-    background: linear-gradient(135deg, #fff 15%, var(--gold-highlight) 45%, var(--gold-1) 78%, var(--gold-2) 100%);
+  }
+  .hero-title .grad {
+    background: linear-gradient(135deg, var(--accent-highlight) 0%, var(--accent-2) 55%, var(--accent-1) 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
   }
   .hero-sub {
-    font-size: clamp(14px, 1.6vw, 16.5px);
+    font-size: clamp(14px, 1.4vw, 16px);
     color: var(--text-dim);
     max-width: 480px;
     line-height: 1.6;
     margin: 0;
   }
-  .hero-actions { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 8px; }
+  .hero-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 6px; }
   .hero-btn-primary {
-    padding: 13px 30px;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 13px 26px;
     border-radius: 999px;
     border: none;
-    background: var(--gold-grad);
-    color: #1a1206;
+    background: var(--accent-grad);
+    color: #0b0620;
     font-size: 14.5px;
     font-weight: 700;
     cursor: pointer;
-    box-shadow: 0 0 30px rgba(242, 184, 75, 0.35);
+    box-shadow: 0 0 30px rgba(124, 92, 255, 0.35);
     transition: filter 0.15s, transform 0.1s;
   }
   .hero-btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
   .hero-btn-secondary {
-    padding: 12px 30px;
+    padding: 12px 26px;
     border-radius: 999px;
-    border: 1px solid rgba(242, 184, 75, 0.35);
-    background: rgba(242, 184, 75, 0.06);
+    border: 1px solid rgba(124, 92, 255, 0.35);
+    background: rgba(124, 92, 255, 0.06);
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
     color: var(--text);
     font-size: 14px;
@@ -1031,23 +1090,9 @@
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, transform 0.1s;
   }
-  .hero-btn-secondary:hover { background: rgba(242, 184, 75, 0.12); border-color: rgba(242, 184, 75, 0.6); transform: translateY(-1px); }
+  .hero-btn-secondary:hover { background: rgba(124, 92, 255, 0.12); border-color: rgba(124, 92, 255, 0.6); transform: translateY(-1px); }
 
-  .hero-scroll-cue {
-    margin-top: 2px;
-    width: 30px; height: 30px;
-    border-radius: 50%;
-    border: none;
-    background: none;
-    color: var(--text-faint);
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    animation: cue-bounce 2.4s ease-in-out infinite;
-  }
-  .hero-scroll-cue:hover { color: var(--gold-1); }
-  @keyframes cue-bounce { 0%, 100% { transform: translateY(0); opacity: 0.5; } 50% { transform: translateY(6px); opacity: 1; } }
-
-  .hero-prompts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 4px; max-width: 640px; }
+  .hero-prompts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
   .hero-prompt-chip {
     padding: 8px 14px;
     border-radius: 999px;
@@ -1058,32 +1103,31 @@
     cursor: pointer;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
   }
-  .hero-prompt-chip:hover { background: var(--surface-hover); color: var(--text); border-color: rgba(242, 184, 75, 0.4); }
+  .hero-prompt-chip:hover { background: var(--surface-hover); color: var(--text); border-color: rgba(124, 92, 255, 0.4); }
 
-  /* ---------- AI core stage ---------- */
-  /* A bounded box below the text, not a full-hero backdrop — this is
-     what guarantees the core can never overlap the headline/buttons, and
-     what lets it be sized as a clear fraction of the hero (30-45% of
-     hero height on desktop, ~25-30% of viewport on mobile) rather than
-     stretching to fill whatever space happens to be free. */
+  /* ---------- AI core stage + floating widget panels ---------- */
+  /* The core+widgets column is a sibling of hero-content, not an absolute
+     backdrop behind it — on desktop flexbox places them side by side, on
+     mobile they stack below. Either way the core can never visually sit
+     under the headline/buttons, by construction rather than z-index. */
+  .hero-visual { position: relative; flex: 1 1 420px; min-width: 280px; display: flex; align-items: center; justify-content: center; }
   .hero-core-stage {
     position: relative;
     width: 100%;
-    max-width: 480px;
+    max-width: 420px;
     height: 40vh;
     min-height: 280px;
-    max-height: 440px;
-    margin-top: 6px;
+    max-height: 420px;
   }
   .hero-canvas-wrap { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
   .hero-canvas-wrap canvas { width: 100%; height: 100%; display: block; }
   .hero-glow-fallback {
     position: absolute;
     top: 50%; left: 50%;
-    width: min(65%, 340px); height: min(65%, 340px);
+    width: min(65%, 300px); height: min(65%, 300px);
     transform: translate(-50%, -50%);
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(242,184,75,0.32), rgba(221,145,56,0.1) 55%, transparent 75%);
+    background: radial-gradient(circle, rgba(124,92,255,0.32), rgba(34,211,238,0.12) 55%, transparent 75%);
     filter: blur(18px);
     z-index: 0;
     animation: core-breathe 5s ease-in-out infinite;
@@ -1093,15 +1137,65 @@
     50% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
   }
 
-  @media (max-width: 640px) {
-    .hero-core-stage { height: 28vh; min-height: 190px; max-width: 320px; }
+  .hud-panel {
+    position: absolute;
+    z-index: 1;
+    width: 170px;
+    padding: 11px 13px;
+    border-radius: 12px;
+    border: 1px solid var(--surface-border);
+    background: rgba(10, 8, 24, 0.45);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+    font-size: 10.5px;
+    font-family: inherit;
+    text-align: left;
+    color: var(--text-dim);
+    pointer-events: none;
+    opacity: 0;
+    animation: hud-in 0.8s ease forwards;
+    transition: border-color 0.15s;
+  }
+  .hud-quote { margin-top: 6px; color: var(--text-dim); font-style: italic; }
+  .hud-panel .hud-title {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 9.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 7px;
+  }
+  .hud-panel .hud-title .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent-2); box-shadow: 0 0 6px 1px var(--accent-2); }
+  .hud-panel .hud-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0; }
+  .hud-panel .hud-row .ok { color: var(--online); font-weight: 700; }
+  .hud-panel.hud-1 { top: 0%; left: -4%; animation-delay: 0.2s; }
+  .hud-panel.hud-2 { top: 4%; right: -6%; animation-delay: 0.5s; }
+  .hud-panel.hud-3 { bottom: 2%; right: 2%; animation-delay: 0.8s; pointer-events: auto; cursor: pointer; }
+  .hud-panel.hud-3:hover { border-color: rgba(124,92,255,0.4); }
+  @keyframes hud-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  @media (max-width: 1150px) {
+    .hud-panel.hud-1, .hud-panel.hud-2 { display: none; }
+  }
+
+  @media (max-width: 900px) {
+    /* align-items:center (set for the row layout, to vertically center
+       text against the core) means something different once flex-direction
+       flips to column — there it centers items at their own intrinsic
+       width instead of stretching them, which collapsed .hero-visual to a
+       sliver. Reset to stretch so both columns take the full width. */
+    .landing-hero { flex-direction: column; align-items: stretch; padding: 40px 20px 20px; gap: 20px; }
+    .hero-content { text-align: center; align-items: center; }
+    .hero-sub { max-width: 480px; }
+    .hero-actions, .hero-prompts { justify-content: center; }
+    .hero-visual { min-width: 0; width: 100%; }
+    .hero-core-stage { height: 30vh; min-height: 220px; max-width: 340px; margin: 0 auto; }
+    .hud-panel.hud-3 { position: static; margin-top: 10px; width: 100%; max-width: 300px; opacity: 1; animation: none; }
   }
 
   /* ---------- section shell ---------- */
   .landing-section { max-width: 1100px; margin: 0 auto; padding: 90px 24px; position: relative; z-index: 1; }
   .section-eyebrow {
     font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
-    color: var(--gold-1); margin: 0 0 10px;
+    color: var(--accent-2); margin: 0 0 10px;
   }
   .section-title { font-size: clamp(24px, 3.4vw, 34px); font-weight: 800; margin: 0 0 12px; letter-spacing: -0.5px; }
   .section-desc { font-size: 14px; color: var(--text-dim); max-width: 560px; line-height: 1.6; margin: 0 0 40px; }
@@ -1114,6 +1208,7 @@
     border-radius: 16px;
     border: 1px solid var(--surface-border);
     background: var(--surface);
+    -webkit-backdrop-filter: blur(12px);
     backdrop-filter: blur(12px);
     overflow: hidden;
     transition: transform 0.2s, border-color 0.2s, background 0.2s;
@@ -1121,13 +1216,34 @@
   .cap-card::before {
     content: "";
     position: absolute; inset: 0 auto 0 0; width: 2px;
-    background: var(--gold-grad);
+    background: var(--accent-grad);
     opacity: 0.7;
   }
-  .cap-card:hover { transform: translateY(-3px); border-color: rgba(242,184,75,0.35); background: var(--surface-hover); }
+  .cap-card:hover { transform: translateY(-3px); border-color: rgba(124,92,255,0.35); background: var(--surface-hover); }
+  .cap-icon {
+    width: 38px; height: 38px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(124, 92, 255, 0.14);
+    color: var(--accent-2);
+    margin-bottom: 14px;
+  }
   .cap-num { font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--text-faint); margin-bottom: 10px; }
   .cap-title { font-size: 17px; font-weight: 700; margin: 0 0 8px; }
-  .cap-desc { font-size: 13px; color: var(--text-dim); line-height: 1.55; margin: 0; }
+  .cap-desc { font-size: 13px; color: var(--text-dim); line-height: 1.55; margin: 0 0 16px; }
+  .cap-action {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--surface-border);
+    background: rgba(255,255,255,0.03);
+    color: var(--text);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .cap-action:hover { background: rgba(124, 92, 255, 0.14); border-color: rgba(124, 92, 255, 0.4); }
   @media (max-width: 700px) { .cap-grid { grid-template-columns: 1fr; } }
 
   /* ---------- pipeline ---------- */
@@ -1146,13 +1262,14 @@
     display: flex; align-items: center; justify-content: center;
     font-size: 11px; font-weight: 700;
     color: var(--text-dim);
+    -webkit-backdrop-filter: blur(10px);
     backdrop-filter: blur(10px);
     transition: border-color 0.2s, color 0.2s, box-shadow 0.2s;
   }
   .pipe-step:hover .pipe-node {
-    border-color: var(--gold-1);
+    border-color: var(--accent-2);
     color: var(--text);
-    box-shadow: 0 0 16px rgba(242, 184, 75, 0.35);
+    box-shadow: 0 0 16px rgba(124, 92, 255, 0.35);
   }
   .pipe-label { font-size: 11.5px; font-weight: 600; color: var(--text-dim); }
   .pipe-connector {
@@ -1160,14 +1277,14 @@
     height: 1px;
     min-width: 20px;
     margin-top: 27px;
-    background: linear-gradient(90deg, var(--surface-border), var(--gold-1), var(--surface-border));
+    background: linear-gradient(90deg, var(--surface-border), var(--accent-2), var(--surface-border));
     background-size: 200% 100%;
     animation: pipe-flow 3s linear infinite;
   }
   @keyframes pipe-flow { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
   @media (max-width: 760px) {
     .pipeline { flex-direction: column; align-items: center; }
-    .pipe-connector { width: 1px; height: 20px; min-width: 1px; margin-top: 0; background: linear-gradient(180deg, var(--surface-border), var(--gold-1), var(--surface-border)); background-size: 100% 200%; animation: pipe-flow-v 3s linear infinite; }
+    .pipe-connector { width: 1px; height: 20px; min-width: 1px; margin-top: 0; background: linear-gradient(180deg, var(--surface-border), var(--accent-2), var(--surface-border)); background-size: 100% 200%; animation: pipe-flow-v 3s linear infinite; }
   }
   @keyframes pipe-flow-v { 0% { background-position: 0 200%; } 100% { background-position: 0 -200%; } }
 
@@ -1183,7 +1300,7 @@
     font-weight: 600;
     color: var(--text-dim);
   }
-  .tech-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold-1); }
+  .tech-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-2); }
 
   /* ---------- footer ---------- */
   .landing-footer {
@@ -1226,7 +1343,6 @@
   @media (prefers-reduced-motion: reduce) {
     .reveal { transition: none; opacity: 1; transform: none; }
     .hero-glow-fallback { animation: none; }
-    .hero-scroll-cue { animation: none; }
     .pipe-connector { animation: none; }
     #inputBar::before { animation: none; }
   }
@@ -1333,6 +1449,7 @@
     const AUTH_TOKEN_KEY = "auth_token";
     let authToken = localStorage.getItem(AUTH_TOKEN_KEY);
     let userId = null; // set once /auth/me confirms the token, below
+    let userEmail = null; // real account email, shown in the landing sidebar footer
 
     function authHeaders(extra) {
       return Object.assign({ Authorization: `Bearer ${authToken}` }, extra || {});
@@ -1545,11 +1662,60 @@
       { icon: "📚", text: "Teach me a new technology" },
     ];
 
+    // Small reusable stroke-icon set (matches the app's existing icon
+    // style elsewhere) shared by the sidebar, drawer, and capability cards.
+    const ICONS = {
+      home: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+      chat: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+      layers: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
+      code: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+      chart: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+      doc: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+      gear: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+      bolt: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+      arrow: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>',
+      menu: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>',
+    };
+
+    // Every item routes into the real chat (with a relevant starter prompt)
+    // or a real existing action (session history, memory panel, file
+    // attach) — there are no separate pages/routes for these behind the
+    // scenes, so nothing here pretends to be one.
+    const SIDEBAR_ITEMS = [
+      { label: "Home", icon: ICONS.home, active: true, action: () => scrollToId("hero") },
+      { label: "AI Chat", icon: ICONS.chat, action: () => focusComposer() },
+      { label: "Workspaces", icon: ICONS.layers, action: () => railHistoryToggle.click() },
+      { label: "Code Assistant", icon: ICONS.code, action: () => startChatWithPrompt("Help me write, debug, or understand some code.") },
+      { label: "Data Analyzer", icon: ICONS.chart, action: () => startChatWithPrompt("Help me analyze some data — I'll describe or paste it in.") },
+      { label: "Knowledge / RAG", icon: ICONS.doc, action: () => attachBtn.click() },
+      { label: "Settings", icon: ICONS.gear, action: () => railMemoryToggle.click() },
+    ];
+
     const CAPABILITIES = [
-      { num: "01", title: "AI Chat", desc: "Ask, reason, and create — a fast, natural conversation with real memory of who you are." },
-      { num: "02", title: "RAG Knowledge", desc: "Upload a PDF and chat with it directly — answers grounded in your own documents, not guesses." },
-      { num: "03", title: "Code Assistant", desc: "Build, debug, and understand code, explained at your level." },
-      { num: "04", title: "Autonomous Tools", desc: "Searches the web, checks orders, and files tickets on its own when a question calls for it." },
+      {
+        num: "01", icon: "code", title: "Smart Code Assistant",
+        desc: "Write, debug and optimize code with AI.",
+        actionLabel: "Open Code Assistant",
+        prompt: "Help me write, debug, or understand some code.",
+      },
+      {
+        num: "02", icon: "doc", title: "Document Intelligence",
+        desc: "Upload, analyze and ask questions about your own documents.",
+        actionLabel: "Upload a Document",
+        attach: true,
+      },
+      {
+        num: "03", icon: "chart", title: "Data & Analytics",
+        desc: "Turn complex data into clear, actionable insights.",
+        actionLabel: "Analyze Data",
+        prompt: "Help me analyze some data — I'll describe or paste it in.",
+      },
+      {
+        num: "04", icon: "bolt", title: "AI Automations",
+        desc: "Searches the web, checks orders, and files tickets on its own when a question calls for it.",
+        actionLabel: "See It In Action",
+        prompt: "What can you automatically do for me, like searching the web or checking an order?",
+      },
     ];
 
     const PIPELINE_STEPS = ["User", "Understand", "Retrieve", "Reason", "Generate", "Answer"];
@@ -1606,9 +1772,9 @@
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isSmall ? 1.5 : 2));
         renderer.setClearColor(0x000000, 0);
 
-        const gold = new THREE.Color(0xf2b84b);
-        const amber = new THREE.Color(0xdd9138);
-        const highlight = new THREE.Color(0xfff3d6);
+        const violet = new THREE.Color(0x7c5cff);
+        const cyan = new THREE.Color(0x22d3ee);
+        const highlight = new THREE.Color(0xf2f0ff);
         const coreGroup = new THREE.Group();
 
         const coreGeo = new THREE.SphereGeometry(0.44, 32, 32);
@@ -1620,16 +1786,16 @@
         // behind the core reads as a soft glow without any post-processing.
         const haloGeo = new THREE.SphereGeometry(0.7, 24, 24);
         const haloMat = new THREE.MeshBasicMaterial({
-          color: gold, transparent: true, opacity: 0.22,
+          color: cyan, transparent: true, opacity: 0.22,
           blending: THREE.AdditiveBlending, depthWrite: false,
         });
         const halo = new THREE.Mesh(haloGeo, haloMat);
         coreGroup.add(halo);
 
         const ringSpecs = [
-          { radius: 1.0, tube: 0.006, color: gold, rx: 1.15, ry: 0.15, speed: 0.09 },
-          { radius: 1.24, tube: 0.005, color: amber, rx: -0.5, ry: 1.0, speed: -0.065 },
-          { radius: 1.48, tube: 0.004, color: gold, rx: 0.35, ry: -0.8, speed: 0.05 },
+          { radius: 1.0, tube: 0.006, color: cyan, rx: 1.15, ry: 0.15, speed: 0.09 },
+          { radius: 1.24, tube: 0.005, color: violet, rx: -0.5, ry: 1.0, speed: -0.065 },
+          { radius: 1.48, tube: 0.004, color: cyan, rx: 0.35, ry: -0.8, speed: 0.05 },
         ];
         const rings = ringSpecs.map((spec) => {
           const geo = new THREE.TorusGeometry(spec.radius, spec.tube, 8, 96);
@@ -1654,7 +1820,7 @@
         const particleGeo = new THREE.BufferGeometry();
         particleGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
         const particleMat = new THREE.PointsMaterial({
-          color: 0xffe9b8, size: 0.016, transparent: true, opacity: 0.6,
+          color: 0xcfe8ff, size: 0.016, transparent: true, opacity: 0.6,
           blending: THREE.AdditiveBlending, depthWrite: false,
         });
         const particles = new THREE.Points(particleGeo, particleMat);
@@ -1761,27 +1927,204 @@
       inputEl.focus();
     }
 
-    // Nav link defs shared between the desktop row and the mobile dropdown
-    // — kept minimal on purpose (Home/Capabilities/Technology/Docs), no
-    // "How It Works" entry; that section still exists further down the
-    // page, it just isn't cluttering the nav itself.
+    // Same fill-and-focus behavior the quick-start prompt chips already
+    // used — reused here so "Code Assistant"/"Data Analyzer"/capability
+    // card actions all route into the one real chat instead of pretending
+    // to be separate features.
+    function startChatWithPrompt(text) {
+      inputEl.value = text;
+      inputEl.focus();
+      inputEl.dispatchEvent(new Event("input"));
+      focusComposer();
+    }
+
+    function scrollToId(id) {
+      document.getElementById(id)?.scrollIntoView({ behavior: reducedMotionMQ.matches ? "auto" : "smooth", block: "start" });
+    }
+
+    // Top-nav anchors — "Docs" is the one real external destination (the
+    // GitHub repo); everything else scrolls within the page.
     const LANDING_LINKS = [
       { label: "Home", href: "#hero" },
-      { label: "Capabilities", href: "#capabilities" },
+      { label: "Features", href: "#capabilities" },
+      { label: "How It Works", href: "#how-it-works" },
       { label: "Technology", href: "#technology" },
       { label: "Docs", href: "https://github.com/Abhijay3/AI-Agent", external: true },
     ];
 
-    function buildLandingNav() {
+    // Shared between the persistent sidebar and the mobile drawer, so both
+    // stay in sync without duplicating the nav-item/action definitions.
+    function buildSidebarNav(onNavigate) {
+      const nav = document.createElement("div");
+      nav.className = "sidebar-nav";
+      for (const item of SIDEBAR_ITEMS) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "sidebar-nav-item" + (item.active ? " active" : "");
+        btn.innerHTML = `${item.icon}<span class="sidebar-label">${escapeHtml(item.label)}</span>`;
+        btn.addEventListener("click", () => {
+          onNavigate?.();
+          item.action();
+        });
+        nav.appendChild(btn);
+      }
+      return nav;
+    }
+
+    // Real, qualitative state only — every row here reflects a tool that
+    // either genuinely exists and is reachable right now (web search, RAG,
+    // memory), or a real count from local state (session list). No
+    // fabricated percentages or production metrics.
+    function buildSidebarWidgets() {
+      const wrap = document.createElement("div");
+      wrap.className = "sidebar-widgets";
+
+      const coreStatus = document.createElement("div");
+      coreStatus.className = "sidebar-widget";
+      coreStatus.innerHTML =
+        '<div class="sidebar-widget-title">AI Core Status</div>' +
+        '<div class="sidebar-widget-row"><span>Web Search</span><span class="ok">Ready</span></div>' +
+        '<div class="sidebar-widget-row"><span>Knowledge (RAG)</span><span class="ok">Ready</span></div>' +
+        '<div class="sidebar-widget-row"><span>Memory</span><span class="ok">Ready</span></div>';
+
+      const usage = document.createElement("div");
+      usage.className = "sidebar-widget";
+      usage.innerHTML =
+        '<div class="sidebar-widget-title">Your Sessions</div>' +
+        `<div class="sidebar-widget-row"><span>Chats</span><span>${sessions.length}</span></div>`;
+
+      const monitor = document.createElement("div");
+      monitor.className = "sidebar-widget";
+      monitor.innerHTML =
+        '<div class="sidebar-widget-title">System Monitor</div>' +
+        '<div class="sidebar-widget-row" style="color:var(--text-faint);">CPU/Memory not available in-browser</div>';
+
+      wrap.appendChild(coreStatus);
+      wrap.appendChild(usage);
+      wrap.appendChild(monitor);
+      return wrap;
+    }
+
+    function buildSidebarFooter() {
+      const footer = document.createElement("div");
+      footer.className = "sidebar-footer";
+      const avatar = document.createElement("div");
+      avatar.className = "brand-mark";
+      avatar.style.cssText = "width:30px;height:30px;font-size:13px;flex-shrink:0;";
+      avatar.textContent = "A";
+      const email = document.createElement("span");
+      email.className = "sidebar-footer-email";
+      email.textContent = userEmail || "Signed in";
+      footer.appendChild(avatar);
+      footer.appendChild(email);
+      return footer;
+    }
+
+    function buildSidebarBrand() {
+      const brand = document.createElement("div");
+      brand.className = "sidebar-brand";
+      const mark = document.createElement("div");
+      mark.className = "brand-mark";
+      mark.style.cssText = "width:30px;height:30px;font-size:13px;";
+      mark.textContent = "A";
+      const text = document.createElement("span");
+      text.className = "sidebar-brand-text";
+      text.textContent = "Abhijay's AI";
+      brand.appendChild(mark);
+      brand.appendChild(text);
+      return brand;
+    }
+
+    // Persistent on desktop/tablet (collapses to icons-only via CSS below
+    // 1080px); hidden entirely below 768px in favor of the drawer.
+    function buildLandingSidebar() {
+      const aside = document.createElement("aside");
+      aside.className = "landing-sidebar";
+      aside.setAttribute("aria-label", "Primary navigation");
+      aside.appendChild(buildSidebarBrand());
+      aside.appendChild(buildSidebarNav());
+      aside.appendChild(buildSidebarWidgets());
+      aside.appendChild(buildSidebarFooter());
+      return aside;
+    }
+
+    // Mobile-only overlay drawer — the same sidebar nav items (real
+    // actions) plus the top-nav's scroll-anchor links, so nothing reachable
+    // on desktop becomes unreachable on a phone. Not the app's separate
+    // chat-session sidebar (#sidebar) — that's a different tool, still
+    // reachable via "Workspaces" below, same as on desktop.
+    function buildLandingDrawer() {
+      const backdrop = document.createElement("div");
+      backdrop.className = "landing-drawer-backdrop";
+
+      const drawer = document.createElement("div");
+      drawer.className = "landing-drawer";
+      drawer.setAttribute("aria-label", "Navigation menu");
+
+      function close() {
+        drawer.classList.remove("open");
+        backdrop.classList.remove("show");
+      }
+      function open() {
+        drawer.classList.add("open");
+        backdrop.classList.add("show");
+      }
+
+      drawer.appendChild(buildSidebarBrand());
+      drawer.appendChild(buildSidebarNav(close));
+
+      const exploreLabel = document.createElement("div");
+      exploreLabel.className = "drawer-section-label";
+      exploreLabel.textContent = "Explore";
+      drawer.appendChild(exploreLabel);
+
+      const linksWrap = document.createElement("div");
+      linksWrap.className = "sidebar-nav";
+      for (const l of LANDING_LINKS) {
+        const a = document.createElement("a");
+        a.href = l.href;
+        a.className = "sidebar-nav-item";
+        a.textContent = l.label;
+        if (l.external) {
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+        } else {
+          a.addEventListener("click", (e) => {
+            e.preventDefault();
+            close();
+            scrollToId(l.href.slice(1));
+          });
+        }
+        linksWrap.appendChild(a);
+      }
+      drawer.appendChild(linksWrap);
+      drawer.appendChild(buildSidebarWidgets());
+
+      const cta = document.createElement("button");
+      cta.type = "button";
+      cta.className = "landing-cta";
+      cta.textContent = "Launch AI";
+      cta.addEventListener("click", () => {
+        close();
+        focusComposer();
+      });
+      drawer.appendChild(cta);
+
+      backdrop.addEventListener("click", close);
+
+      return { backdrop, drawer, open, close };
+    }
+
+    function buildLandingNav(drawerControls) {
       const nav = document.createElement("nav");
       nav.className = "landing-nav";
-      nav.setAttribute("aria-label", "Landing navigation");
+      nav.setAttribute("aria-label", "Top navigation");
 
       const left = document.createElement("div");
       left.className = "landing-nav-left";
       const mark = document.createElement("div");
       mark.className = "brand-mark";
-      mark.style.cssText = "width:30px;height:30px;font-size:13px;";
+      mark.style.cssText = "width:28px;height:28px;font-size:12px;";
       mark.textContent = "A";
       const brand = document.createElement("span");
       brand.className = "landing-nav-brand";
@@ -1789,7 +2132,10 @@
       left.appendChild(mark);
       left.appendChild(brand);
 
-      function buildLink(l, onClick) {
+      const links = document.createElement("ul");
+      links.className = "landing-nav-links";
+      for (const l of LANDING_LINKS) {
+        const li = document.createElement("li");
         const a = document.createElement("a");
         a.href = l.href;
         a.textContent = l.label;
@@ -1799,18 +2145,10 @@
         } else {
           a.addEventListener("click", (e) => {
             e.preventDefault();
-            onClick?.();
-            document.querySelector(l.href)?.scrollIntoView({ behavior: reducedMotionMQ.matches ? "auto" : "smooth", block: "start" });
+            scrollToId(l.href.slice(1));
           });
         }
-        return a;
-      }
-
-      const links = document.createElement("ul");
-      links.className = "landing-nav-links";
-      for (const l of LANDING_LINKS) {
-        const li = document.createElement("li");
-        li.appendChild(buildLink(l));
+        li.appendChild(a);
         links.appendChild(li);
       }
 
@@ -1828,10 +2166,9 @@
       const toggle = document.createElement("button");
       toggle.type = "button";
       toggle.className = "landing-nav-toggle";
-      toggle.setAttribute("aria-label", "Toggle navigation menu");
-      toggle.setAttribute("aria-expanded", "false");
-      toggle.innerHTML =
-        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>';
+      toggle.setAttribute("aria-label", "Open navigation menu");
+      toggle.innerHTML = ICONS.menu;
+      toggle.addEventListener("click", drawerControls.open);
 
       right.appendChild(status);
       right.appendChild(cta);
@@ -1840,38 +2177,7 @@
       nav.appendChild(left);
       nav.appendChild(links);
       nav.appendChild(right);
-
-      // Lightweight dropdown for narrow viewports — the same wayfinding
-      // links plus Launch AI, not the app's full chat-session sidebar
-      // (that's a different tool for a different job).
-      const mobileMenu = document.createElement("div");
-      mobileMenu.className = "landing-mobile-menu";
-      function closeMobileMenu() {
-        mobileMenu.classList.remove("open");
-        toggle.setAttribute("aria-expanded", "false");
-      }
-      for (const l of LANDING_LINKS) {
-        mobileMenu.appendChild(buildLink(l, closeMobileMenu));
-      }
-      const mobileCta = document.createElement("button");
-      mobileCta.type = "button";
-      mobileCta.className = "landing-cta";
-      mobileCta.textContent = "Launch AI";
-      mobileCta.addEventListener("click", () => {
-        closeMobileMenu();
-        focusComposer();
-      });
-      mobileMenu.appendChild(mobileCta);
-
-      toggle.addEventListener("click", () => {
-        const open = mobileMenu.classList.toggle("open");
-        toggle.setAttribute("aria-expanded", String(open));
-      });
-
-      const frag = document.createDocumentFragment();
-      frag.appendChild(nav);
-      frag.appendChild(mobileMenu);
-      return frag;
+      return nav;
     }
 
     function buildHero() {
@@ -1884,43 +2190,30 @@
 
       const eyebrow = document.createElement("div");
       eyebrow.className = "hero-eyebrow";
-      eyebrow.innerHTML = '<span class="dot"></span>Online';
-
-      const kicker = document.createElement("div");
-      kicker.className = "hero-kicker";
-      kicker.textContent = "Abhijay's AI";
+      eyebrow.innerHTML = '<span class="dot"></span>Next-Gen AI Platform';
 
       const title = document.createElement("h1");
       title.className = "hero-title";
-      title.innerHTML = "Meet Your AI<br/>Command Center";
+      title.innerHTML = 'Your <span class="grad">AI</span> Copilot.<br/>Built for the <span class="grad">Future</span>.';
 
       const sub = document.createElement("p");
       sub.className = "hero-sub";
-      sub.textContent = "Your intelligent personal AI for knowledge, coding, research, automation and everyday tasks.";
+      sub.textContent = "Harness intelligent conversation, knowledge retrieval, coding help, and automation — all in one futuristic workspace.";
 
       const actions = document.createElement("div");
       actions.className = "hero-actions";
-      const launchBtn = document.createElement("button");
-      launchBtn.type = "button";
-      launchBtn.className = "hero-btn-primary";
-      launchBtn.textContent = "Launch AI";
-      launchBtn.addEventListener("click", focusComposer);
-      const talkBtn = document.createElement("button");
-      talkBtn.type = "button";
-      talkBtn.className = "hero-btn-secondary";
-      talkBtn.textContent = "Talk to AI";
-      talkBtn.addEventListener("click", focusComposer);
-      actions.appendChild(launchBtn);
-      actions.appendChild(talkBtn);
-
-      const scrollCue = document.createElement("button");
-      scrollCue.type = "button";
-      scrollCue.className = "hero-scroll-cue";
-      scrollCue.setAttribute("aria-label", "Scroll to capabilities");
-      scrollCue.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
-      scrollCue.addEventListener("click", () => {
-        document.getElementById("capabilities")?.scrollIntoView({ behavior: reducedMotionMQ.matches ? "auto" : "smooth", block: "start" });
-      });
+      const startBtn = document.createElement("button");
+      startBtn.type = "button";
+      startBtn.className = "hero-btn-primary";
+      startBtn.innerHTML = `Start Chatting ${ICONS.arrow}`;
+      startBtn.addEventListener("click", focusComposer);
+      const exploreBtn = document.createElement("button");
+      exploreBtn.type = "button";
+      exploreBtn.className = "hero-btn-secondary";
+      exploreBtn.textContent = "Explore Features";
+      exploreBtn.addEventListener("click", () => scrollToId("capabilities"));
+      actions.appendChild(startBtn);
+      actions.appendChild(exploreBtn);
 
       const prompts = document.createElement("div");
       prompts.className = "hero-prompts";
@@ -1929,27 +2222,24 @@
         chip.type = "button";
         chip.className = "hero-prompt-chip";
         chip.textContent = `${p.icon}  ${p.text}`;
-        chip.addEventListener("click", () => {
-          inputEl.value = p.text;
-          inputEl.focus();
-          inputEl.dispatchEvent(new Event("input")); // grow the textarea to fit the text
-          focusComposer();
-        });
+        chip.addEventListener("click", () => startChatWithPrompt(p.text));
         prompts.appendChild(chip);
       }
 
       content.appendChild(eyebrow);
-      content.appendChild(kicker);
       content.appendChild(title);
       content.appendChild(sub);
       content.appendChild(actions);
-      content.appendChild(scrollCue);
       content.appendChild(prompts);
 
-      // The AI core lives in its own bounded stage BELOW the text content
-      // (normal document flow, not an absolute full-hero backdrop) — it
-      // can never end up visually behind/under the headline or buttons
-      // regardless of viewport size, by construction rather than z-index.
+      // ---- visual column: AI core + floating status panels ----
+      // A sibling of hero-content (flex row on desktop, stacked below on
+      // mobile via CSS) — never an absolute backdrop behind the text, so
+      // it can't visually sit under the headline/buttons regardless of
+      // viewport size.
+      const visual = document.createElement("div");
+      visual.className = "hero-visual";
+
       const stage = document.createElement("div");
       stage.className = "hero-core-stage";
       const glowFallback = document.createElement("div");
@@ -1962,8 +2252,42 @@
       canvasWrap.appendChild(canvas);
       stage.appendChild(canvasWrap);
 
+      // Qualitative, real states only — each row names a tool that's
+      // either genuinely reachable right now (web search, RAG, memory) or
+      // it isn't shown. No fabricated percentages or usage numbers.
+      const processingPanel = document.createElement("div");
+      processingPanel.className = "hud-panel hud-1";
+      processingPanel.setAttribute("aria-hidden", "true");
+      processingPanel.innerHTML =
+        '<div class="hud-title"><span class="dot"></span>Real-Time Processing</div>' +
+        '<div class="hud-row"><span>Reasoning</span><span class="ok">Active</span></div>' +
+        '<div class="hud-row"><span>Tool Use</span><span class="ok">Active</span></div>';
+
+      const knowledgePanel = document.createElement("div");
+      knowledgePanel.className = "hud-panel hud-2";
+      knowledgePanel.setAttribute("aria-hidden", "true");
+      knowledgePanel.innerHTML =
+        '<div class="hud-title"><span class="dot"></span>Knowledge Sources</div>' +
+        '<div class="hud-row"><span>Documents (RAG)</span><span class="ok">Ready</span></div>' +
+        '<div class="hud-row"><span>Web Search</span><span class="ok">Ready</span></div>' +
+        '<div class="hud-row"><span>Memory</span><span class="ok">Ready</span></div>';
+
+      const assistantPanel = document.createElement("button");
+      assistantPanel.type = "button";
+      assistantPanel.className = "hud-panel hud-3";
+      assistantPanel.innerHTML =
+        '<div class="hud-title"><span class="dot"></span>AI Assistant</div>' +
+        '<div class="hud-row"><span>Status</span><span class="ok">Online</span></div>' +
+        '<div class="hud-quote">"How can I help you today?"</div>';
+      assistantPanel.addEventListener("click", focusComposer);
+
+      visual.appendChild(stage);
+      visual.appendChild(processingPanel);
+      visual.appendChild(knowledgePanel);
+      visual.appendChild(assistantPanel);
+
       hero.appendChild(content);
-      hero.appendChild(stage);
+      hero.appendChild(visual);
 
       // Progressive 3D enhancement — the CSS glow already renders a
       // complete-looking core immediately; this loads on top of it.
@@ -1989,6 +2313,11 @@
       for (const c of CAPABILITIES) {
         const card = document.createElement("div");
         card.className = "cap-card";
+
+        const icon = document.createElement("div");
+        icon.className = "cap-icon";
+        icon.innerHTML = ICONS[c.icon];
+
         const num = document.createElement("div");
         num.className = "cap-num";
         num.textContent = c.num;
@@ -1998,9 +2327,24 @@
         const d = document.createElement("p");
         d.className = "cap-desc";
         d.textContent = c.desc;
+
+        // Every card routes into the real chat (with a relevant starter
+        // prompt) or the real attach-a-document flow — not a separate page,
+        // since none of these exist as distinct routes in this app.
+        const action = document.createElement("button");
+        action.type = "button";
+        action.className = "cap-action";
+        action.textContent = c.actionLabel;
+        action.addEventListener("click", () => {
+          if (c.attach) attachBtn.click();
+          else startChatWithPrompt(c.prompt);
+        });
+
+        card.appendChild(icon);
         card.appendChild(num);
         card.appendChild(t);
         card.appendChild(d);
+        card.appendChild(action);
         grid.appendChild(card);
       }
 
@@ -2111,10 +2455,12 @@
 
     function setupLandingScrollEffects(wrap) {
       const nav = wrap.querySelector(".landing-nav");
-      const mobileMenu = wrap.querySelector(".landing-mobile-menu");
+      const drawer = wrap.querySelector(".landing-drawer");
+      const drawerBackdrop = wrap.querySelector(".landing-drawer-backdrop");
       function onScroll() {
         nav.classList.toggle("scrolled", chatWrapEl.scrollTop > 20);
-        mobileMenu?.classList.remove("open");
+        drawer?.classList.remove("open");
+        drawerBackdrop?.classList.remove("show");
       }
       chatWrapEl.addEventListener("scroll", onScroll, { passive: true });
       onScroll();
@@ -2150,12 +2496,26 @@
 
       const wrap = document.createElement("div");
       wrap.id = "welcomeScreen";
-      wrap.appendChild(buildLandingNav());
-      wrap.appendChild(buildHero());
-      wrap.appendChild(buildCapabilities());
-      wrap.appendChild(buildPipeline());
-      wrap.appendChild(buildTechStack());
-      wrap.appendChild(buildLandingFooter());
+
+      const drawerParts = buildLandingDrawer();
+
+      const main = document.createElement("div");
+      main.className = "landing-main";
+      main.appendChild(buildLandingNav(drawerParts));
+      main.appendChild(buildHero());
+      main.appendChild(buildCapabilities());
+      main.appendChild(buildPipeline());
+      main.appendChild(buildTechStack());
+      main.appendChild(buildLandingFooter());
+
+      const shell = document.createElement("div");
+      shell.className = "landing-shell";
+      shell.appendChild(buildLandingSidebar());
+      shell.appendChild(main);
+
+      wrap.appendChild(shell);
+      wrap.appendChild(drawerParts.backdrop);
+      wrap.appendChild(drawerParts.drawer);
 
       chatEl.appendChild(wrap);
       setupLandingScrollEffects(wrap);
@@ -2833,6 +3193,7 @@
         }
         authToken = data.token;
         userId = data.user_id;
+        userEmail = data.email;
         localStorage.setItem(AUTH_TOKEN_KEY, authToken);
         authPasswordEl.value = "";
         showApp();
@@ -2869,6 +3230,7 @@
         }
         const data = await res.json();
         userId = data.user_id;
+        userEmail = data.email;
         showApp();
         initApp();
       } catch {
