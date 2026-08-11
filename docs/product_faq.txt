@@ -1,0 +1,10 @@
+Acme Corp Product FAQ
+
+Laptop ($799.99): 14-inch display, 16GB RAM, 512GB SSD, up to 10 hours of battery life. Ships with a 65W USB-C charger. Compatible with the USB-C Hub for extra ports.
+Wireless Mouse ($19.99): 2.4GHz wireless with a USB receiver, up to 12 months of battery life on 2 AA batteries, works with Windows, macOS, and Linux.
+Mechanical Keyboard ($89.99): Hot-swappable mechanical switches, USB-C wired connection, N-key rollover, compatible with Windows and macOS (Mac-specific keycaps not included).
+Monitor 27in ($249.99): 27-inch 1440p IPS panel, 75Hz refresh rate, HDMI and DisplayPort inputs, built-in height and tilt adjustment stand.
+USB-C Hub ($34.99): 7-in-1 hub with HDMI, 2x USB-A, SD/microSD card reader, and 100W USB-C power delivery pass-through for charging while connected.
+
+Troubleshooting: if a wireless product won't connect, re-seat the USB receiver in a different port and replace the batteries (Wireless Mouse) before contacting support.
+If the Monitor 27in shows no signal, confirm the input source selected on the monitor matches the cable in use (HDMI vs DisplayPort).

@@ -1,0 +1,7 @@
+Acme Corp Warranty Policy
+
+All Acme Corp products come with a 1-year limited warranty covering manufacturing defects and hardware failures under normal use.
+The warranty does not cover accidental damage, liquid damage, unauthorized repairs, or normal wear and tear (e.g. worn keycaps, frayed cables).
+To file a warranty claim, contact support with the order ID, a description of the issue, and photos if the defect is physical.
+Approved claims are resolved with a free repair or a replacement unit, whichever is faster to fulfill; return shipping for the faulty unit is prepaid by Acme Corp.
+The Laptop and Monitor 27in also qualify for an optional 2-year extended warranty, purchasable within 30 days of the original order.

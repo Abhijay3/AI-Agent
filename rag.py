@@ -21,7 +21,7 @@ def ingest_docs(docs_dir: str = "docs") -> None:
     print(f"Ingested {len(ids)} documents: {ids}")
 
 
-def retrieve(query: str, n_results: int = 2) -> list:
+def retrieve(query: str, n_results: int = 3) -> list:
     results = collection.query(query_texts=[query], n_results=n_results)
     return results["documents"][0]
 
