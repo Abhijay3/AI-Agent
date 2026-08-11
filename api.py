@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Security, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -74,6 +74,19 @@ app.add_middleware(
 limiter = Limiter(key_func=get_remote_address, storage_uri=REDIS_URL or f"redis://{REDIS_HOST}:6379")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    # Last-resort safety net: HTTPException/RequestValidationError still hit
+    # their own more specific handlers first (FastAPI picks the closest
+    # match in the exception's MRO), so this only fires for genuinely
+    # unanticipated bugs — a DB hiccup, a Redis blip, anything we didn't
+    # think to catch locally. Without this, an unhandled exception in a
+    # route we didn't wrap (e.g. /history, /memories) would propagate as a
+    # raw 500 instead of a clean, safe JSON response.
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Something went wrong. Please try again."})
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -297,7 +310,7 @@ def list_tickets(request: Request, status: Optional[str] = TICKET_STATUS_QUERY) 
 def update_ticket_status(
     request: Request, body: TicketStatusUpdate, ticket_id: int = TICKET_ID_PATH
 ) -> dict:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     try:
         cur = conn.cursor()
         cur.execute("UPDATE tickets SET status = ? WHERE id = ?", (body.status, ticket_id))

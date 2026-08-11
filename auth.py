@@ -19,7 +19,11 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 def create_user(email: str, password: str) -> int:
     normalized_email = email.strip().lower()
-    conn = sqlite3.connect(DB_PATH)
+    # A longer busy-timeout means a write that lands while another
+    # connection briefly holds the lock waits and retries instead of
+    # immediately raising "database is locked" — matters more once real
+    # concurrent signups/tickets/memory-writes are actually happening.
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     try:
         cur = conn.cursor()
         try:

@@ -22,6 +22,7 @@ from tools import (
     remember_about_me,
     run_sql_query,
     web_search,
+    web_search_with_sources,
 )
 
 load_dotenv()
@@ -246,6 +247,13 @@ MAX_RETRIES = 3
 # in Redis/the UI, this only bounds what gets sent as context.
 MAX_HISTORY_MESSAGES = 20
 
+# A model could in principle request many tool calls in a single round.
+# Running them all concurrently with no cap would spin up a thread (and,
+# for browse_webpage, potentially a whole browser) per call at once —
+# capping the pool bounds worst-case resource use per request regardless
+# of how many tool calls one round asks for.
+MAX_PARALLEL_TOOL_CALLS = 4
+
 
 def _trim_history(messages: list) -> list:
     if len(messages) <= MAX_HISTORY_MESSAGES:
@@ -260,13 +268,19 @@ def _trim_history(messages: list) -> list:
     return trimmed
 
 
-def _run_tool(name: str, arguments_json: str, user_id: str) -> str:
+def _run_tool(name: str, arguments_json: str, user_id: str) -> tuple:
+    """Returns (content_for_model, sources). sources is only ever non-None
+    for web_search, letting the UI show real citations instead of parsing
+    them back out of the prose the model reads."""
     args = json.loads(arguments_json) if arguments_json else {}
     if name in ("remember_about_me", "forget_about_me"):
         args["user_id"] = user_id
-    function = TOOL_FUNCTIONS[name]
     try:
-        return str(function(**args))
+        if name == "web_search":
+            content, sources = web_search_with_sources(**args)
+            return content, sources
+        function = TOOL_FUNCTIONS[name]
+        return str(function(**args)), None
     except Exception as e:
         # Tools raise ValueError for expected, already-friendly failures
         # (bad input, search/browse unavailable, etc). Anything else is an
@@ -274,7 +288,7 @@ def _run_tool(name: str, arguments_json: str, user_id: str) -> str:
         # the whole turn; either way the model sees "Error: ..." as its tool
         # result and can react gracefully instead of the request just dying.
         logger.warning("tool %s failed: %s", name, e)
-        return f"Error: {e}"
+        return f"Error: {e}", None
 
 
 def call_model_stream(messages: list):
@@ -516,7 +530,7 @@ def stream_turn(messages: list, user_id: str):
         # them concurrently means the round takes as long as the *slowest*
         # call instead of the sum of all of them.
         tools_start = time.monotonic()
-        with ThreadPoolExecutor(max_workers=len(tool_calls_acc)) as executor:
+        with ThreadPoolExecutor(max_workers=min(len(tool_calls_acc), MAX_PARALLEL_TOOL_CALLS)) as executor:
             futures = [
                 (acc["id"], executor.submit(_run_tool, acc["name"], acc["arguments"], user_id))
                 for acc in tool_calls_acc.values()
@@ -526,7 +540,9 @@ def stream_turn(messages: list, user_id: str):
             "[TOOLS] %.2fs (%d call%s)", time.monotonic() - tools_start, len(results), "" if len(results) == 1 else "s"
         )
 
-        for tool_call_id, output in results:
+        for tool_call_id, (output, sources) in results:
+            if sources:
+                yield {"event": "sources", "sources": sources}
             messages.append({"role": "tool", "tool_call_id": tool_call_id, "content": output})
         # loop back for the next model call now that tool results are in
 

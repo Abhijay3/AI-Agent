@@ -651,6 +651,25 @@
   }
   .bubble a { color: inherit; text-decoration: underline; text-decoration-color: rgba(255,255,255,0.4); }
 
+  /* ---------- citations shown when an answer used web search ---------- */
+  .sources-row {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--surface-border);
+    font-size: 12px;
+    line-height: 1.6;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+  }
+  .sources-row .sources-label { color: var(--text-faint); }
+  .sources-row a {
+    color: var(--text-dim);
+    text-decoration: none;
+    border-bottom: 1px dashed var(--text-faint);
+  }
+  .sources-row a:hover { color: var(--text); border-bottom-color: var(--text-dim); }
+
   .table-wrap { overflow-x: auto; margin: 8px 0; }
   .bubble table {
     border-collapse: collapse;
@@ -1378,6 +1397,30 @@
         .replace(/>/g, "&gt;");
     }
 
+    // Built with DOM APIs (not innerHTML string concat) so a malicious
+    // search-result title/url can never inject markup — .textContent and
+    // the .href property are always treated as plain data, never parsed.
+    function appendSources(bubble, sources) {
+      const row = document.createElement("div");
+      row.className = "sources-row";
+
+      const label = document.createElement("span");
+      label.className = "sources-label";
+      label.textContent = "Sources:";
+      row.appendChild(label);
+
+      sources.forEach((s) => {
+        const link = document.createElement("a");
+        link.href = s.url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = s.title || s.url;
+        row.appendChild(link);
+      });
+
+      bubble.appendChild(row);
+    }
+
     function renderInline(text) {
       let out = escapeHtml(text);
       out = out.replace(/`([^`]+)`/g, "<code>$1</code>");
@@ -1669,6 +1712,7 @@
       let answerText = "";
       let answerStarted = false;
       let settled = false;
+      let sources = [];
 
       try {
         const res = await fetch("/chat/stream", {
@@ -1741,6 +1785,12 @@
               settled = true;
               statusRow.remove();
               addMessage("system", "Error: " + evt.message);
+            } else if (evt.event === "sources") {
+              // De-dupe by URL in case the model searched more than once —
+              // rendered once, after streaming finishes, below.
+              for (const s of evt.sources) {
+                if (!sources.some((existing) => existing.url === s.url)) sources.push(s);
+              }
             }
           }
         }
@@ -1748,6 +1798,8 @@
         if (targetSessionId === activeId && !answerStarted && !settled) {
           // stream ended with nothing to show (shouldn't normally happen)
           statusRow.remove();
+        } else if (targetSessionId === activeId && answerStarted && sources.length) {
+          appendSources(bubble, sources);
         }
       } catch (e) {
         if (targetSessionId === activeId) {

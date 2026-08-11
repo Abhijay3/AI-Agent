@@ -360,6 +360,29 @@ def test_list_memories_returns_scoped_facts(monkeypatch):
     assert seen_user_ids == [TEST_USER_ID]
 
 
+def test_unhandled_exception_returns_clean_json_not_a_traceback(monkeypatch):
+    # A route we didn't wrap in its own try/except (unlike /chat, /chat/stream)
+    # hitting a totally unexpected bug (DB hiccup, Redis blip, whatever) must
+    # still come back as a safe, generic JSON error — never a raw traceback.
+    # TestClient re-raises server exceptions by default (handy for debugging
+    # other tests) — disable that here to see what a real deployment (behind
+    # uvicorn, no such passthrough) would actually send the browser.
+    make_client(monkeypatch)
+    client = TestClient(api.app, raise_server_exceptions=False)
+
+    def broken_get_all_memories(user_id):
+        raise RuntimeError("boom - unexpected bug")
+
+    monkeypatch.setattr(api, "get_all_memories", broken_get_all_memories)
+
+    res = client.get("/memories")
+
+    assert res.status_code == 500
+    assert res.json() == {"detail": "Something went wrong. Please try again."}
+    assert "boom" not in res.text
+    assert "Traceback" not in res.text
+
+
 def test_delete_memory_requires_auth_and_scopes_to_user(monkeypatch):
     client = make_client(monkeypatch, authenticated=False)
     calls = []

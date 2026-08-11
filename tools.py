@@ -2,6 +2,7 @@ import ipaddress
 import os
 import socket
 import sqlite3
+import threading
 from urllib.parse import urlparse
 
 import requests
@@ -13,6 +14,15 @@ from tavily import TavilyClient
 from setup_db import DB_PATH
 
 PDF_UPLOAD_DIR = os.path.abspath("uploads")
+
+# Each browse_webpage call launches a full Chromium process — on a small
+# instance (e.g. Render's free 512MB tier) a handful of concurrent chats
+# each triggering one at the same time is enough to OOM-kill the whole
+# server (this actually happened earlier: /health itself started 502ing
+# under load). Capping how many can run at once, process-wide, bounds
+# worst-case memory regardless of how many chats are concurrent.
+_BROWSER_SLOTS = threading.Semaphore(2)
+_BROWSER_WAIT_TIMEOUT = 20  # seconds to wait for a free slot before giving up
 
 
 def calculator(operation: str, a: float, b: float) -> float:
@@ -122,7 +132,7 @@ def check_order_status(order_id: int, email: str) -> str:
 
 
 def create_support_ticket(name: str, email: str, subject: str, description: str) -> str:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     try:
         cur = conn.cursor()
         cur.execute(
@@ -142,7 +152,7 @@ def remember_about_me(user_id: str, key: str, value: str) -> str:
     if not normalized_key:
         raise ValueError("Key must not be empty.")
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     try:
         cur = conn.cursor()
         cur.execute(
@@ -159,7 +169,7 @@ def remember_about_me(user_id: str, key: str, value: str) -> str:
 
 def forget_about_me(user_id: str, key: str) -> str:
     normalized_key = key.strip().lower().replace(" ", "_")
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     try:
         cur = conn.cursor()
         cur.execute("DELETE FROM memories WHERE user_id = ? AND key = ?", (user_id, normalized_key))
@@ -205,7 +215,11 @@ def read_pdf(path: str) -> str:
     return text
 
 
-def web_search(query: str, max_results: int = 5) -> str:
+def web_search_with_sources(query: str, max_results: int = 5) -> tuple:
+    """Returns (text_for_model, sources) — sources is a list of
+    {"title", "url"} dicts, separate from the text so a caller (the UI)
+    can show them as proper citations instead of parsing them back out of
+    the prose the model reads."""
     tavily_client = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
     try:
         response = tavily_client.search(
@@ -224,7 +238,7 @@ def web_search(query: str, max_results: int = 5) -> str:
     answer = response.get("answer")
 
     if not results and not answer:
-        return "No results found."
+        return "No results found.", []
 
     parts = []
     if answer:
@@ -233,7 +247,13 @@ def web_search(query: str, max_results: int = 5) -> str:
         parts.append(
             "Sources:\n\n" + "\n\n".join(f"{r['title']}\n{r['url']}\n{r['content']}" for r in results)
         )
-    return "\n\n".join(parts)
+    sources = [{"title": r["title"], "url": r["url"]} for r in results]
+    return "\n\n".join(parts), sources
+
+
+def web_search(query: str, max_results: int = 5) -> str:
+    text, _sources = web_search_with_sources(query, max_results)
+    return text
 
 
 def _is_public_http_url(url: str) -> bool:
@@ -265,23 +285,29 @@ def browse_webpage(url: str) -> str:
     if not _is_public_http_url(url):
         raise ValueError(f"Refusing to browse non-public URL: {url}")
 
-    # This is the slowest tool available (a full browser launch), and the
-    # main cause of the UI getting stuck on "Browsing the page..." — bound
-    # both the launch and the navigation explicitly instead of relying on
-    # Playwright's much longer defaults (30s launch, 30s goto).
+    if not _BROWSER_SLOTS.acquire(timeout=_BROWSER_WAIT_TIMEOUT):
+        raise ValueError("Too many page-reading requests right now — please try again shortly.")
+
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(timeout=8000)
-            try:
-                page = browser.new_page()
-                # domcontentloaded (not the default "load") returns as soon as
-                # the DOM is ready, without waiting for every image/ad/script
-                # to finish — the visible text we want is already there by then.
-                page.goto(url, timeout=8000, wait_until="domcontentloaded")
-                text = page.inner_text("body")
-            finally:
-                browser.close()
-    except PlaywrightError as e:
-        raise ValueError("That page took too long to load or couldn't be reached.") from e
+        # This is the slowest tool available (a full browser launch), and the
+        # main cause of the UI getting stuck on "Browsing the page..." — bound
+        # both the launch and the navigation explicitly instead of relying on
+        # Playwright's much longer defaults (30s launch, 30s goto).
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(timeout=8000)
+                try:
+                    page = browser.new_page()
+                    # domcontentloaded (not the default "load") returns as soon
+                    # as the DOM is ready, without waiting for every image/ad/
+                    # script to finish — the visible text we want is there by then.
+                    page.goto(url, timeout=8000, wait_until="domcontentloaded")
+                    text = page.inner_text("body")
+                finally:
+                    browser.close()
+        except PlaywrightError as e:
+            raise ValueError("That page took too long to load or couldn't be reached.") from e
+    finally:
+        _BROWSER_SLOTS.release()
 
     return text.strip()[:3000]

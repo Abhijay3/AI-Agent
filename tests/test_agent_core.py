@@ -74,6 +74,44 @@ def test_stream_turn_executes_tool_calls_then_streams_answer(monkeypatch):
     assert tool_messages[0]["content"] == "5"
 
 
+def test_stream_turn_emits_sources_event_for_web_search(monkeypatch):
+    first_call_chunks = [
+        make_chunk(
+            tool_calls=[
+                make_tool_call_delta(0, call_id="call1", name="web_search", arguments='{"query":"iPhone price India"}')
+            ]
+        ),
+    ]
+    second_call_chunks = [make_chunk(content="It costs a lot.")]
+    responses = [iter(first_call_chunks), iter(second_call_chunks)]
+    monkeypatch.setattr(agent_core, "call_model_stream", lambda messages: responses.pop(0))
+    monkeypatch.setattr(
+        agent_core,
+        "web_search_with_sources",
+        lambda query: ("Tavily's synthesized answer: a lot", [{"title": "Apple", "url": "https://apple.com"}]),
+    )
+
+    messages = [{"role": "user", "content": "iphone price india?"}]
+    events = list(agent_core.stream_turn(messages, "u1"))
+
+    sources_events = [e for e in events if e["event"] == "sources"]
+    assert sources_events == [{"event": "sources", "sources": [{"title": "Apple", "url": "https://apple.com"}]}]
+
+
+def test_stream_turn_emits_no_sources_event_for_non_search_tools(monkeypatch):
+    first_call_chunks = [
+        make_chunk(tool_calls=[make_tool_call_delta(0, call_id="call1", name="calculator", arguments='{"operation":"add","a":2,"b":3}')]),
+    ]
+    second_call_chunks = [make_chunk(content="5")]
+    responses = [iter(first_call_chunks), iter(second_call_chunks)]
+    monkeypatch.setattr(agent_core, "call_model_stream", lambda messages: responses.pop(0))
+
+    messages = [{"role": "user", "content": "what is 2+3"}]
+    events = list(agent_core.stream_turn(messages, "u1"))
+
+    assert not any(e["event"] == "sources" for e in events)
+
+
 def test_stream_turn_runs_multiple_tool_calls_in_parallel(monkeypatch):
     first_call_chunks = [
         make_chunk(
@@ -119,7 +157,27 @@ def test_run_tool_catches_unexpected_exceptions(monkeypatch):
 
     result = agent_core._run_tool("calculator", '{"operation":"add","a":1,"b":1}', "u1")
 
-    assert result == "Error: boom"
+    assert result == ("Error: boom", None)
+
+
+def test_run_tool_returns_sources_for_web_search(monkeypatch):
+    monkeypatch.setattr(
+        agent_core,
+        "web_search_with_sources",
+        lambda query: ("some search result text", [{"title": "Example", "url": "https://example.com"}]),
+    )
+
+    content, sources = agent_core._run_tool("web_search", '{"query":"test"}', "u1")
+
+    assert content == "some search result text"
+    assert sources == [{"title": "Example", "url": "https://example.com"}]
+
+
+def test_run_tool_returns_no_sources_for_non_search_tools():
+    content, sources = agent_core._run_tool("calculator", '{"operation":"add","a":1,"b":1}', "u1")
+
+    assert content == "2"
+    assert sources is None
 
 
 def test_build_system_message_includes_todays_date(monkeypatch):

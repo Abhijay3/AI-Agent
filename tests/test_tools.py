@@ -1,4 +1,7 @@
 import os
+import threading
+import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -223,3 +226,58 @@ def test_browse_webpage_wraps_playwright_failures_as_value_error(monkeypatch):
 
     with pytest.raises(ValueError):
         browse_webpage("https://example.com")
+
+
+def test_browse_webpage_caps_concurrent_browser_launches(monkeypatch):
+    # Each browse_webpage launches a full Chromium process — on a small
+    # instance that's exactly what OOM-crashed the whole server once
+    # already under real concurrent load. The module-wide semaphore is
+    # supposed to bound how many launches run at once regardless of how
+    # many chats are concurrent; prove it actually does, not just that the
+    # code exists.
+    lock = threading.Lock()
+    state = {"current": 0, "max_seen": 0}
+
+    class FakePage:
+        def goto(self, url, timeout=None, wait_until=None):
+            pass
+
+        def inner_text(self, selector):
+            return "page text"
+
+    class FakeBrowser:
+        def new_page(self):
+            return FakePage()
+
+        def close(self):
+            pass
+
+    class FakeChromium:
+        def launch(self, timeout=None):
+            with lock:
+                state["current"] += 1
+                state["max_seen"] = max(state["max_seen"], state["current"])
+            time.sleep(0.2)
+            with lock:
+                state["current"] -= 1
+            return FakeBrowser()
+
+    class FakePlaywrightContextSlow:
+        def __enter__(self):
+            return SimpleNamespace(chromium=FakeChromium())
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(tools, "sync_playwright", lambda: FakePlaywrightContextSlow())
+    # Real module-wide semaphore, default cap of 2 — not mocked, so this
+    # test exercises the actual production limit.
+    monkeypatch.setattr(tools, "_BROWSER_SLOTS", threading.Semaphore(2))
+
+    threads = [threading.Thread(target=browse_webpage, args=("https://example.com",)) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert state["max_seen"] <= 2
