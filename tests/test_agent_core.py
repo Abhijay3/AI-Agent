@@ -1,4 +1,6 @@
 import os
+import time
+from datetime import date
 from types import SimpleNamespace
 
 import httpx
@@ -70,6 +72,82 @@ def test_stream_turn_executes_tool_calls_then_streams_answer(monkeypatch):
     tool_messages = [m for m in messages if m.get("role") == "tool"]
     assert len(tool_messages) == 1
     assert tool_messages[0]["content"] == "5"
+
+
+def test_stream_turn_runs_multiple_tool_calls_in_parallel(monkeypatch):
+    first_call_chunks = [
+        make_chunk(
+            tool_calls=[
+                make_tool_call_delta(0, call_id="call1", name="calculator", arguments='{"operation":"add","a":1,"b":1}'),
+                make_tool_call_delta(1, call_id="call2", name="get_weather", arguments='{"city":"Paris"}'),
+            ]
+        ),
+    ]
+    second_call_chunks = [make_chunk(content="done")]
+    responses = [iter(first_call_chunks), iter(second_call_chunks)]
+    monkeypatch.setattr(agent_core, "call_model_stream", lambda messages: responses.pop(0))
+
+    intervals = {}
+
+    def make_slow_tool(name, delay):
+        def fn(**kwargs):
+            start = time.monotonic()
+            time.sleep(delay)
+            intervals[name] = (start, time.monotonic())
+            return "ok"
+
+        return fn
+
+    monkeypatch.setitem(agent_core.TOOL_FUNCTIONS, "calculator", make_slow_tool("calculator", 0.2))
+    monkeypatch.setitem(agent_core.TOOL_FUNCTIONS, "get_weather", make_slow_tool("get_weather", 0.2))
+
+    messages = [{"role": "user", "content": "do two things"}]
+    list(agent_core.stream_turn(messages, "u1"))
+
+    (start1, end1), (start2, end2) = intervals["calculator"], intervals["get_weather"]
+    # If the two tool calls ran one after another, one interval would only
+    # start once the other had already finished. Overlapping start/end
+    # windows is the signal that they actually ran concurrently.
+    assert max(start1, start2) < min(end1, end2)
+
+
+def test_run_tool_catches_unexpected_exceptions(monkeypatch):
+    def broken(**kwargs):
+        raise TypeError("boom")
+
+    monkeypatch.setitem(agent_core.TOOL_FUNCTIONS, "calculator", broken)
+
+    result = agent_core._run_tool("calculator", '{"operation":"add","a":1,"b":1}', "u1")
+
+    assert result == "Error: boom"
+
+
+def test_build_system_message_includes_todays_date(monkeypatch):
+    monkeypatch.setattr(agent_core, "get_all_memories", lambda user_id: {})
+    monkeypatch.setattr(agent_core, "retrieve", lambda query: [])
+
+    system_message = agent_core._build_system_message([{"role": "user", "content": "hi"}], "u1")
+
+    assert date.today().isoformat() in system_message["content"]
+
+
+def test_build_system_message_omits_docs_block_when_nothing_relevant(monkeypatch):
+    monkeypatch.setattr(agent_core, "get_all_memories", lambda user_id: {})
+    monkeypatch.setattr(agent_core, "retrieve", lambda query: [])
+
+    system_message = agent_core._build_system_message([{"role": "user", "content": "hi"}], "u1")
+
+    assert "Relevant company documents" not in system_message["content"]
+
+
+def test_build_system_message_includes_docs_block_when_relevant(monkeypatch):
+    monkeypatch.setattr(agent_core, "get_all_memories", lambda user_id: {})
+    monkeypatch.setattr(agent_core, "retrieve", lambda query: ["Some policy text"])
+
+    system_message = agent_core._build_system_message([{"role": "user", "content": "hi"}], "u1")
+
+    assert "Relevant company documents" in system_message["content"]
+    assert "Some policy text" in system_message["content"]
 
 
 def test_stream_turn_detects_leaked_pseudo_tool_call(monkeypatch):

@@ -4,8 +4,10 @@ import pytest
 
 os.environ.setdefault("TAVILY_API_KEY", "test-key")
 
+import tools  # noqa: E402
 from tools import (  # noqa: E402
     _is_public_http_url,
+    browse_webpage,
     calculator,
     check_order_status,
     create_support_ticket,
@@ -14,6 +16,7 @@ from tools import (  # noqa: E402
     read_pdf,
     remember_about_me,
     run_sql_query,
+    web_search,
 )
 
 
@@ -157,3 +160,66 @@ def test_memories_are_isolated_per_user():
     assert "test_name" not in get_all_memories(TEST_USER)
     # forgetting for one user must not touch the other user's memory
     assert get_all_memories(OTHER_USER)["test_name"] == "Someone Else"
+
+
+class FakeTavilyClient:
+    def __init__(self, api_key):
+        pass
+
+    def search(self, query, **kwargs):
+        return {
+            "answer": "42",
+            "results": [{"title": "The Answer", "url": "https://example.com/x", "content": "It's 42."}],
+        }
+
+
+class FailingTavilyClient:
+    def __init__(self, api_key):
+        pass
+
+    def search(self, query, **kwargs):
+        raise RuntimeError("network down")
+
+
+def test_web_search_includes_synthesized_answer_and_sources(monkeypatch):
+    monkeypatch.setattr(tools, "TavilyClient", FakeTavilyClient)
+
+    result = web_search("what is the answer")
+
+    assert "Tavily's synthesized answer: 42" in result
+    assert "Sources:" in result
+    assert "https://example.com/x" in result
+
+
+def test_web_search_wraps_tavily_failures_as_value_error(monkeypatch):
+    # A Tavily outage, timeout, or bad API key must never crash the whole
+    # turn — it should surface as the same kind of friendly ValueError every
+    # other tool uses, so agent_core can hand it back to the model gracefully.
+    monkeypatch.setattr(tools, "TavilyClient", FailingTavilyClient)
+
+    with pytest.raises(ValueError):
+        web_search("what is the answer")
+
+
+class FakeChromiumLaunchFails:
+    def launch(self, timeout=None):
+        from playwright.sync_api import Error as PlaywrightError
+
+        raise PlaywrightError("Timeout exceeded while launching browser")
+
+
+class FakePlaywrightContext:
+    def __enter__(self):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(chromium=FakeChromiumLaunchFails())
+
+    def __exit__(self, *args):
+        return False
+
+
+def test_browse_webpage_wraps_playwright_failures_as_value_error(monkeypatch):
+    monkeypatch.setattr(tools, "sync_playwright", lambda: FakePlaywrightContext())
+
+    with pytest.raises(ValueError):
+        browse_webpage("https://example.com")

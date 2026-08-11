@@ -2,6 +2,9 @@ import json
 import logging
 import os
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 
 from dotenv import load_dotenv
 from openai import BadRequestError, OpenAI, RateLimitError
@@ -170,7 +173,14 @@ tools = [
         "type": "function",
         "function": {
             "name": "web_search",
-            "description": "Search the web for current information not known from training data.",
+            "description": (
+                "Search the web for current/factual information not reliably known "
+                "from training data (news, prices, weather, recent releases, etc). "
+                "Always pass a clear, effective English query capturing the user's "
+                "intent, even if they asked in another language — translate/rewrite "
+                "it first, don't pass their raw text through unless it's already "
+                "a good English query."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -250,6 +260,23 @@ def _trim_history(messages: list) -> list:
     return trimmed
 
 
+def _run_tool(name: str, arguments_json: str, user_id: str) -> str:
+    args = json.loads(arguments_json) if arguments_json else {}
+    if name in ("remember_about_me", "forget_about_me"):
+        args["user_id"] = user_id
+    function = TOOL_FUNCTIONS[name]
+    try:
+        return str(function(**args))
+    except Exception as e:
+        # Tools raise ValueError for expected, already-friendly failures
+        # (bad input, search/browse unavailable, etc). Anything else is an
+        # unexpected bug — catch it too so one tool failing can't take down
+        # the whole turn; either way the model sees "Error: ..." as its tool
+        # result and can react gracefully instead of the request just dying.
+        logger.warning("tool %s failed: %s", name, e)
+        return f"Error: {e}"
+
+
 def call_model_stream(messages: list):
     last_error = None
     for _ in range(MAX_RETRIES):
@@ -267,8 +294,21 @@ def call_model_stream(messages: list):
 
 def _build_system_message(messages: list, user_id: str) -> dict:
     last_user_message = messages[-1]["content"]
+
+    t0 = time.monotonic()
+    # retrieve() already filters out low-relevance chunks (see rag.py), so an
+    # empty result here means nothing in the company docs is actually about
+    # this question — omit the section entirely rather than handing the
+    # model a block of unrelated policy text to "ignore."
     context_docs = retrieve(last_user_message)
-    context_text = "\n\n---\n\n".join(context_docs)
+    logger.info("[RAG] %.2fs (%d chunk%s)", time.monotonic() - t0, len(context_docs), "" if len(context_docs) == 1 else "s")
+    context_block = (
+        "\n\nRelevant company documents (these were retrieved because they "
+        "matched the question — answer using them, don't second-guess "
+        "whether they're relevant):\n\n" + "\n\n---\n\n".join(context_docs)
+        if context_docs
+        else ""
+    )
 
     memories = get_all_memories(user_id)
     memory_text = (
@@ -277,13 +317,48 @@ def _build_system_message(messages: list, user_id: str) -> dict:
         else "(nothing remembered yet)"
     )
 
+    today = date.today().isoformat()
+
     return {
         "role": "system",
         "content": (
-            "You are a helpful customer support agent for Acme Corp. Use the "
-            "following company policy documents and the available tools to "
-            "answer customer questions accurately. If the documents aren't "
-            "relevant to the question, ignore them.\n\n"
+            "You are a helpful customer support agent for Acme Corp. "
+            f"Today's date is {today} — use it to judge what's current and "
+            "to answer date-relative questions correctly.\n\n"
+            "How to decide whether to search the web (web_search tool):\n"
+            "- For current events, news, prices, weather, sports results, "
+            "stocks, or anything about a specific person/product/event that "
+            "could have changed since your training — ALWAYS use web_search "
+            "first. Don't answer these from memory even if you think you "
+            "know the answer; your training data has a cutoff and can be "
+            "stale.\n"
+            "- For general knowledge, definitions, explanations, or coding "
+            "help (e.g. 'What is Python?', 'Explain recursion', 'write a "
+            "React component') that doesn't change over time — answer "
+            "directly, immediately, without searching. Searching for these "
+            "only adds delay for no benefit.\n"
+            "- For this customer's own orders use check_order_status; for "
+            "catalog inventory/pricing use run_sql_query. Never web-search "
+            "for data that lives in our own database.\n\n"
+            "When you do search the web:\n"
+            "- Always search with a clear, effective English query capturing "
+            "the intent, even if the user asked in Hinglish or another "
+            "language (e.g. for 'bhai latest iphone ka price kya hai India "
+            "me', search 'latest iPhone price in India', not the literal "
+            "text).\n"
+            "- One good search is usually enough — don't repeat near-"
+            "identical searches. Only reach for browse_webpage if the "
+            "search snippets genuinely don't have enough detail; it's much "
+            "slower, so don't use it by default.\n"
+            "- Only state facts the results actually support — never invent "
+            "numbers, dates, or details that aren't in what you retrieved. "
+            "If sources disagree, say so instead of picking one silently.\n"
+            "- When your answer relies on a search, briefly name the source "
+            "(e.g. the site name) so the user knows where it came from.\n\n"
+            "Language: reply in whatever language/style the user wrote in. "
+            "If they wrote in Hinglish, reply naturally in Hinglish — don't "
+            "switch to formal Hindi or pure English. If they wrote in "
+            "English, reply in English.\n\n"
             "You can look up real order status with check_order_status, and "
             "file a real support ticket with create_support_ticket. "
             "create_support_ticket only needs a name, email, subject, and "
@@ -297,7 +372,7 @@ def _build_system_message(messages: list, user_id: str) -> dict:
             "role, company, preferences, ongoing projects, etc.), call "
             "remember_about_me to save it immediately, without being asked. "
             "Use what's already remembered naturally instead of asking them "
-            "to repeat it.\n\n" + context_text
+            "to repeat it." + context_block
         ),
     }
 
@@ -318,6 +393,7 @@ def stream_turn(messages: list, user_id: str):
     exposed to the model as a callable parameter, so the model can't be
     steered into reading or writing another user's memory.
     """
+    turn_start = time.monotonic()
     system_message = _build_system_message(messages, user_id)
     # Counts consecutive stream failures that happened before anything was
     # shown to the user, so they can be retried transparently (distinct
@@ -327,12 +403,14 @@ def stream_turn(messages: list, user_id: str):
 
     while True:
         api_messages = [system_message] + _trim_history(messages)
+        llm_start = time.monotonic()
         try:
             stream = call_model_stream(api_messages)
         except BadRequestError:
             fallback = "Sorry, I couldn't process that. Could you rephrase, or be more specific (e.g. name a city)?"
             messages.append({"role": "assistant", "content": fallback})
             yield {"event": "token", "text": fallback}
+            logger.info("[TOTAL] %.2fs", time.monotonic() - turn_start)
             return
         except RateLimitError:
             # Groq's free tier has a strict per-minute token budget shared
@@ -343,6 +421,7 @@ def stream_turn(messages: list, user_id: str):
             fallback = "I'm getting a lot of requests right now and hit the free plan's rate limit. Please wait about a minute and try again."
             messages.append({"role": "assistant", "content": fallback})
             yield {"event": "token", "text": fallback}
+            logger.info("[TOTAL] %.2fs", time.monotonic() - turn_start)
             return
 
         content = ""
@@ -398,18 +477,22 @@ def stream_turn(messages: list, user_id: str):
                 else "Sorry, something went wrong generating a response. Please try again."
             )
             yield {"event": "error", "message": message}
+            logger.info("[TOTAL] %.2fs", time.monotonic() - turn_start)
             return
 
+        logger.info("[LLM] %.2fs", time.monotonic() - llm_start)
         retry_count = 0
 
         if leaked_tool_call and not tool_calls_acc:
             fallback = "Sorry, I wasn't able to complete that request. Could you try rephrasing it?"
             messages.append({"role": "assistant", "content": fallback})
             yield {"event": "content_replace", "text": fallback}
+            logger.info("[TOTAL] %.2fs", time.monotonic() - turn_start)
             return
 
         if not tool_calls_acc:
             messages.append({"role": "assistant", "content": content})
+            logger.info("[TOTAL] %.2fs", time.monotonic() - turn_start)
             return
 
         tool_calls_list = [
@@ -426,18 +509,25 @@ def stream_turn(messages: list, user_id: str):
 
         for acc in tool_calls_acc.values():
             yield {"event": "tool_call", "tool": acc["name"]}
-            args = json.loads(acc["arguments"]) if acc["arguments"] else {}
-            if acc["name"] in ("remember_about_me", "forget_about_me"):
-                args["user_id"] = user_id
-            function = TOOL_FUNCTIONS[acc["name"]]
-            try:
-                output = str(function(**args))
-            except ValueError as e:
-                output = f"Error: {e}"
 
-            messages.append(
-                {"role": "tool", "tool_call_id": acc["id"], "content": output}
-            )
+        # Independent tool calls from the same round (e.g. two searches, or
+        # a search + a weather lookup) used to run one at a time in a plain
+        # for-loop, each waiting on the previous one's network I/O. Running
+        # them concurrently means the round takes as long as the *slowest*
+        # call instead of the sum of all of them.
+        tools_start = time.monotonic()
+        with ThreadPoolExecutor(max_workers=len(tool_calls_acc)) as executor:
+            futures = [
+                (acc["id"], executor.submit(_run_tool, acc["name"], acc["arguments"], user_id))
+                for acc in tool_calls_acc.values()
+            ]
+            results = [(tool_call_id, future.result()) for tool_call_id, future in futures]
+        logger.info(
+            "[TOOLS] %.2fs (%d call%s)", time.monotonic() - tools_start, len(results), "" if len(results) == 1 else "s"
+        )
+
+        for tool_call_id, output in results:
+            messages.append({"role": "tool", "tool_call_id": tool_call_id, "content": output})
         # loop back for the next model call now that tool results are in
 
 

@@ -1018,9 +1018,11 @@
       run_sql_query: "📦 Checking inventory…",
       web_search: "🔍 Searching the web…",
       read_pdf: "📄 Reading the PDF…",
-      browse_webpage: "🌐 Browsing the page…",
+      browse_webpage: "🌐 Reading a source in detail…",
       check_order_status: "📦 Looking up your order…",
       create_support_ticket: "🎫 Filing your ticket…",
+      remember_about_me: "🧠 Remembering that…",
+      forget_about_me: "🧠 Updating my memory…",
     };
 
     // ---------- session (multi-chat) management ----------
@@ -1658,7 +1660,7 @@
       avatar.textContent = "A";
       const bubble = document.createElement("div");
       bubble.className = "bubble status-bubble";
-      bubble.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
+      bubble.innerHTML = '<span class="tool-status">Thinking…</span> <span class="typing-dots"><span></span><span></span><span></span></span>';
       statusRow.appendChild(avatar);
       statusRow.appendChild(bubble);
       chatEl.appendChild(statusRow);

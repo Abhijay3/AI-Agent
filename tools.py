@@ -5,6 +5,7 @@ import sqlite3
 from urllib.parse import urlparse
 
 import requests
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 from pypdf import PdfReader
 from tavily import TavilyClient
@@ -204,17 +205,35 @@ def read_pdf(path: str) -> str:
     return text
 
 
-def web_search(query: str, max_results: int = 3) -> str:
+def web_search(query: str, max_results: int = 5) -> str:
     tavily_client = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
-    response = tavily_client.search(query, max_results=max_results)
-    results = response.get("results", [])
+    try:
+        response = tavily_client.search(
+            query,
+            search_depth="basic",  # fast tier; "advanced" roughly doubles latency
+            max_results=max_results,
+            include_answer="basic",  # ask Tavily for a pre-synthesized answer, not just raw snippets
+            timeout=10,
+        )
+    except Exception as e:
+        # Network error, bad API key, Tavily downtime, or our own timeout —
+        # all look the same to the caller: search isn't available right now.
+        raise ValueError("Web search is temporarily unavailable.") from e
 
-    if not results:
+    results = response.get("results", [])
+    answer = response.get("answer")
+
+    if not results and not answer:
         return "No results found."
 
-    return "\n\n".join(
-        f"{r['title']}\n{r['url']}\n{r['content']}" for r in results
-    )
+    parts = []
+    if answer:
+        parts.append(f"Tavily's synthesized answer: {answer}")
+    if results:
+        parts.append(
+            "Sources:\n\n" + "\n\n".join(f"{r['title']}\n{r['url']}\n{r['content']}" for r in results)
+        )
+    return "\n\n".join(parts)
 
 
 def _is_public_http_url(url: str) -> bool:
@@ -246,13 +265,23 @@ def browse_webpage(url: str) -> str:
     if not _is_public_http_url(url):
         raise ValueError(f"Refusing to browse non-public URL: {url}")
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        try:
-            page = browser.new_page()
-            page.goto(url, timeout=15000)
-            text = page.inner_text("body")
-        finally:
-            browser.close()
+    # This is the slowest tool available (a full browser launch), and the
+    # main cause of the UI getting stuck on "Browsing the page..." — bound
+    # both the launch and the navigation explicitly instead of relying on
+    # Playwright's much longer defaults (30s launch, 30s goto).
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(timeout=8000)
+            try:
+                page = browser.new_page()
+                # domcontentloaded (not the default "load") returns as soon as
+                # the DOM is ready, without waiting for every image/ad/script
+                # to finish — the visible text we want is already there by then.
+                page.goto(url, timeout=8000, wait_until="domcontentloaded")
+                text = page.inner_text("body")
+            finally:
+                browser.close()
+    except PlaywrightError as e:
+        raise ValueError("That page took too long to load or couldn't be reached.") from e
 
     return text.strip()[:3000]
