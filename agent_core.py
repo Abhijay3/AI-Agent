@@ -237,8 +237,13 @@ register_tool(Tool(
         "additionalProperties": False,
     },
     handler=open_url,
-    client_action=lambda args: {"action": "open_url", "url": args["url"]},
+    client_action=lambda args, result: {"action": "open_url", "url": args["url"]},
 ))
+
+# Registers the macOS/desktop-agent tools (open_application, take_screenshot,
+# etc.) into the same registry — importing for the side effect of its
+# module-level register_tool() calls, same pattern as every tool above.
+import desktop_agent_tools  # noqa: E402,F401
 
 tools = openai_tool_schemas()
 TOOL_FUNCTIONS = {t.name: t.handler for t in all_tools()}
@@ -279,23 +284,27 @@ def _run_tool(name: str, arguments_json: str, user_id: str) -> tuple:
     """Returns (content_for_model, sources, client_action).
 
     Which of these apply for a given tool comes from its registration in
-    tool_registry (needs_user_id, returns_sources, client_action) rather
-    than being hardcoded per tool name here — see Tool for what each flag
-    means. sources is only ever non-None for tools with returns_sources=True
-    (currently just web_search), letting the UI show real citations instead
-    of parsing them back out of the prose the model reads. client_action
-    signals something the frontend must do itself — the backend is a cloud
-    container, it cannot open a tab in the user's actual browser, only ask
-    it to; open_url is the first tool that needs this, and the same
-    extension point a future "run this on the desktop agent" action would
-    use once one exists.
+    tool_registry (needs_user_id, returns_sources, client_action,
+    summarize_for_model) rather than being hardcoded per tool name here —
+    see Tool for what each flag means. sources is only ever non-None for
+    tools with returns_sources=True (currently just web_search), letting
+    the UI show real citations instead of parsing them back out of the
+    prose the model reads. client_action signals something the frontend
+    must do itself — the backend is a cloud container, it cannot open a
+    tab in the user's actual browser or display an image on the user's
+    screen, only ask the frontend to (open_url, take_screenshot).
 
     The actual callable is still looked up through TOOL_FUNCTIONS (a plain,
     mutable dict derived from the registry at import time) rather than the
     Tool object's own handler reference, so tests can substitute a fake
     implementation via monkeypatch.setitem without re-registering a tool.
     """
-    args = json.loads(arguments_json) if arguments_json else {}
+    # Groq sends the literal string "null" (not "{}") for some no-parameter
+    # tools — json.loads("null") is None, and function(**None) crashes, so
+    # this can't just check `if arguments_json` (a non-empty "null" string
+    # is truthy) — it has to check what it actually parsed to.
+    parsed = json.loads(arguments_json) if arguments_json else {}
+    args = parsed if isinstance(parsed, dict) else {}
     tool = get_tool(name)
     if tool.needs_user_id:
         args["user_id"] = user_id
@@ -304,8 +313,17 @@ def _run_tool(name: str, arguments_json: str, user_id: str) -> tuple:
         if tool.returns_sources:
             content, sources = function(**args)
             return content, sources, None
-        content = str(function(**args))
-        client_action = tool.client_action(args) if tool.client_action else None
+        result = function(**args)
+        if tool.summarize_for_model:
+            content = tool.summarize_for_model(result)
+        elif isinstance(result, (dict, list)):
+            # Real JSON, not Python's repr() — e.g. get_mac_memory_usage
+            # returns a dict; the model reads it far more reliably as
+            # {"percent_used": 57.0} than {'percent_used': 57.0}.
+            content = json.dumps(result)
+        else:
+            content = str(result)
+        client_action = tool.client_action(args, result) if tool.client_action else None
         return content, None, client_action
     except Exception as e:
         # Tools raise ValueError for expected, already-friendly failures

@@ -41,10 +41,20 @@ class Tool:
     # string — lets the UI show real citations (e.g. web_search).
     returns_sources: bool = False
     # Optional builder for a "client_action" the frontend must carry out
-    # itself (e.g. opening a URL in the user's actual browser tab — the
-    # backend is a cloud container, it can't do that directly). Called with
-    # the tool's parsed arguments; returns the action dict, or None.
-    client_action: Optional[Callable[[dict], Optional[dict]]] = None
+    # itself (e.g. opening a URL in the user's actual browser tab, or
+    # rendering an image the model itself can't display — the backend is a
+    # cloud container, it can't do either directly). Called with the
+    # tool's parsed arguments and its raw (pre-summarized) result; returns
+    # the action dict, or None.
+    client_action: Optional[Callable[[dict, object], Optional[dict]]] = None
+    # Optional override for what the *model* sees as this tool's result,
+    # separate from the raw value the handler returns — e.g. take_screenshot
+    # returns a dict with a large base64 image string that's useless (and
+    # expensive) for the model to read, so the model instead gets a short
+    # text summary while the image itself reaches the UI via client_action.
+    # Defaults to json.dumps(result) for dict/list results, str(result)
+    # otherwise (see agent_core._run_tool).
+    summarize_for_model: Optional[Callable[[object], str]] = None
 
 
 _REGISTRY: dict = {}

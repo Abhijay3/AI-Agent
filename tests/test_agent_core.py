@@ -249,6 +249,19 @@ def test_run_tool_returns_no_sources_for_non_search_tools():
     assert client_action is None
 
 
+def test_run_tool_handles_groq_sending_the_literal_string_null_as_arguments(monkeypatch):
+    # Regression: Groq sends arguments="null" (not "{}") for some
+    # no-parameter tools. json.loads("null") is None, and a naive
+    # `function(**args)` with args=None crashes with a TypeError instead
+    # of running the tool — caught via live testing, not by inspection.
+    monkeypatch.setitem(agent_core.TOOL_FUNCTIONS, "get_current_time", lambda **kwargs: "no crash")
+    content, sources, client_action = agent_core._run_tool("get_current_time", "null", "u1")
+
+    assert content == "no crash"
+    assert sources is None
+    assert client_action is None
+
+
 def test_run_tool_returns_client_action_for_open_url():
     content, sources, client_action = agent_core._run_tool("open_url", '{"url":"https://example.com"}', "u1")
 

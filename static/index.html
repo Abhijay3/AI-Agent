@@ -609,6 +609,13 @@
     padding: 4px 10px;
     white-space: pre-wrap;
   }
+  .chat-screenshot {
+    display: block;
+    max-width: min(70ch, 100%);
+    border-radius: var(--radius);
+    border: 1px solid var(--surface-border);
+    box-shadow: 0 8px 24px -16px rgba(0, 0, 0, 0.6);
+  }
 
   /* ---------- persistent tool-use transparency (not just the transient
      "Searching the web…" status text — a lasting record of what actually
@@ -1626,6 +1633,17 @@
       create_support_ticket: "🎫 Filing your ticket…",
       remember_about_me: "🧠 Remembering that…",
       forget_about_me: "🧠 Updating my memory…",
+      open_application: "🖥️ Opening the app…",
+      close_application: "🖥️ Closing the app…",
+      get_running_applications: "🖥️ Checking what's running…",
+      get_active_application: "🖥️ Checking the active app…",
+      get_mac_system_info: "🖥️ Checking your Mac…",
+      get_battery_status: "🔋 Checking battery…",
+      get_mac_memory_usage: "🖥️ Checking memory usage…",
+      get_mac_cpu_usage: "🖥️ Checking CPU usage…",
+      get_mac_disk_usage: "🖥️ Checking disk space…",
+      open_finder: "🖥️ Opening Finder…",
+      take_screenshot: "📸 Taking a screenshot…",
     };
 
     // ---------- session (multi-chat) management ----------
@@ -3395,9 +3413,20 @@
               resolveToolChip(pendingToolChips, evt.ok);
             } else if (evt.event === "client_action") {
               // The backend is a cloud container — it can't open anything
-              // on the user's actual machine, only ask their browser to.
+              // on the user's actual machine or render an image itself,
+              // only ask the browser to.
               if (evt.action === "open_url" && evt.url) {
                 window.open(evt.url, "_blank", "noopener,noreferrer");
+              } else if (evt.action === "show_image" && evt.image_base64) {
+                // Appended as a sibling of `bubble`, not inside it — the
+                // bubble's innerHTML gets fully overwritten on every
+                // subsequent token, which would otherwise wipe the image.
+                const img = document.createElement("img");
+                img.className = "chat-screenshot";
+                img.src = `data:image/${evt.format || "jpeg"};base64,${evt.image_base64}`;
+                img.alt = "Screenshot from your Mac";
+                contentCol.appendChild(img);
+                chatWrapEl.scrollTop = chatWrapEl.scrollHeight;
               }
             } else if (evt.event === "token") {
               if (!answerStarted) {

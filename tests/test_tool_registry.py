@@ -45,9 +45,12 @@ def test_needs_user_id_tools_are_the_memory_tools():
     assert memory_tools == {"remember_about_me", "forget_about_me"}
 
 
-def test_open_url_is_the_only_tool_with_a_client_action():
+def test_client_action_tools_are_exactly_the_ones_that_need_frontend_followup():
+    # open_url needs the browser to open a tab; take_screenshot needs it to
+    # render an image — both are things this backend (a cloud container)
+    # can't do directly itself, only ask the frontend to.
     client_action_tools = {name for name in agent_core.TOOL_FUNCTIONS if get_tool(name).client_action}
-    assert client_action_tools == {"open_url"}
+    assert client_action_tools == {"open_url", "take_screenshot"}
 
 
 def test_web_search_is_the_only_tool_that_returns_sources():

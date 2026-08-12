@@ -133,6 +133,68 @@ def test_hub_unregister_fails_pending_calls():
     asyncio.run(scenario())
 
 
+# ---------- call_sync — the cross-thread bridge agent_core's tool-calling
+# loop (a ThreadPoolExecutor worker, not the event loop) uses to invoke the
+# hub. This needs a real second thread running a real event loop to
+# meaningfully test — a hub whose _loop is the *same* loop the test itself
+# runs on wouldn't exercise run_coroutine_threadsafe's actual cross-thread
+# behavior, which is the whole point of call_sync existing. ----------
+
+
+@pytest.fixture
+def hub_with_background_loop():
+    hub = DesktopAgentHub()
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+
+    socket = FakeSocket()
+    asyncio.run_coroutine_threadsafe(hub.register(socket, {"hostname": "abhis-mac"}), loop).result(timeout=2)
+
+    yield hub, loop, socket
+
+    loop.call_soon_threadsafe(loop.stop)
+    thread.join(timeout=2)
+    loop.close()
+
+
+def test_call_sync_raises_when_never_connected():
+    hub = DesktopAgentHub()
+    with pytest.raises(ConnectionError):
+        hub.call_sync("ping")
+
+
+def test_call_sync_returns_the_agents_response(hub_with_background_loop):
+    hub, loop, socket = hub_with_background_loop
+
+    def respond_once_request_is_sent():
+        # Runs on the *test* thread, polling the FakeSocket that the hub
+        # (on the *other* thread) writes to — mirrors how a real agent
+        # replies asynchronously from its own connection.
+        deadline = time.time() + 2
+        while time.time() < deadline and not socket.sent:
+            time.sleep(0.01)
+        sent = json.loads(socket.sent[0])
+        assert sent["capability"] == "get_battery_status"
+        response = {"request_id": sent["request_id"], "ok": True, "result": {"percent": 82}}
+        asyncio.run_coroutine_threadsafe(hub.handle_message(json.dumps(response)), loop).result(timeout=2)
+
+    responder = threading.Thread(target=respond_once_request_is_sent)
+    responder.start()
+
+    result = hub.call_sync("get_battery_status")
+
+    responder.join(timeout=2)
+    assert result == {"request_id": result["request_id"], "ok": True, "result": {"percent": 82}}
+
+
+def test_call_sync_times_out_when_agent_never_replies(hub_with_background_loop, monkeypatch):
+    hub, loop, socket = hub_with_background_loop
+    monkeypatch.setattr(desktop_agent_hub, "REQUEST_TIMEOUT_SECONDS", 0.1)
+    with pytest.raises(TimeoutError):
+        hub.call_sync("ping")
+
+
 # ---------- The real WebSocket + REST endpoints, end to end ----------
 
 

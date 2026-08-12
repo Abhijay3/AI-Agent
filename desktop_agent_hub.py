@@ -22,6 +22,7 @@ nothing here executes a shell command directly.
 """
 
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
@@ -44,6 +45,12 @@ class DesktopAgentHub:
         self._connected_at: Optional[float] = None
         self._agent_info: dict = {}
         self._pending: dict = {}
+        # The event loop that owns this hub's async state — captured on
+        # register() (called from the WS handler, so it's always the real
+        # running loop). call_sync() needs this to safely bridge in from a
+        # different thread; asyncio.Future results can't be delivered
+        # correctly across threads/loops without going through it.
+        self._loop = None
 
     def is_connected(self) -> bool:
         return self._socket is not None
@@ -64,6 +71,7 @@ class DesktopAgentHub:
         self._connected_at = time.time()
         self._agent_info = agent_info
         self._pending = {}
+        self._loop = asyncio.get_running_loop()
 
     async def unregister(self, socket) -> None:
         if self._socket is not socket:
@@ -105,6 +113,35 @@ class DesktopAgentHub:
             raise TimeoutError(f"Desktop agent didn't respond to '{capability}' in time")
         finally:
             self._pending.pop(request_id, None)
+
+    def call_sync(self, capability: str, params: Optional[dict] = None) -> dict:
+        """Synchronous bridge for code that isn't running on this hub's
+        event loop — e.g. a ThreadPoolExecutor worker in agent_core's
+        tool-calling loop, where every existing tool handler is a plain
+        blocking function, not a coroutine. asyncio.Future results can't be
+        delivered correctly across threads/event loops on their own
+        (resolving one from the wrong thread doesn't reliably wake up
+        whatever is awaiting it) — run_coroutine_threadsafe is the correct,
+        supported way to schedule real async work from another thread and
+        block that thread for the result.
+
+        concurrent.futures.TimeoutError and the builtin TimeoutError are
+        the same class in Python 3.11+ but distinct ones in 3.9 (this
+        project's local dev version) — catch both explicitly so the
+        caller only ever needs to handle one, version-independent
+        TimeoutError.
+        """
+        if self._loop is None:
+            raise ConnectionError("Desktop agent is not connected")
+        future = asyncio.run_coroutine_threadsafe(self.call(capability, params), self._loop)
+        try:
+            # A few seconds longer than call()'s own internal timeout, so
+            # that timeout (which raises a properly-messaged TimeoutError
+            # from inside the coroutine) fires first in normal operation —
+            # this outer one is only a defensive backstop.
+            return future.result(timeout=REQUEST_TIMEOUT_SECONDS + 5)
+        except concurrent.futures.TimeoutError:
+            raise TimeoutError(f"Desktop agent didn't respond to '{capability}' in time")
 
     async def _close_quietly(self, socket) -> None:
         try:
