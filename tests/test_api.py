@@ -351,21 +351,70 @@ def test_list_memories_returns_scoped_facts(monkeypatch):
     client = make_client(monkeypatch)
     seen_user_ids = []
 
-    def fake_get_all_memories(user_id):
+    def fake_get_all_memories_detailed(user_id):
         seen_user_ids.append(user_id)
-        return {"name": "Abhi", "role": "full stack developer"}
+        return [
+            {"key": "name", "value": "Abhi", "category": "name", "updated_at": "2026-01-01 00:00:00"},
+            {"key": "role", "value": "full stack developer", "category": "other", "updated_at": "2026-01-01 00:00:00"},
+        ]
 
-    monkeypatch.setattr(api, "get_all_memories", fake_get_all_memories)
+    monkeypatch.setattr(api, "get_all_memories_detailed", fake_get_all_memories_detailed)
 
     res = client.get("/memories")
     assert res.status_code == 200
     assert res.json() == {
         "memories": [
-            {"key": "name", "value": "Abhi"},
-            {"key": "role", "value": "full stack developer"},
+            {"key": "name", "value": "Abhi", "category": "name", "updated_at": "2026-01-01 00:00:00"},
+            {"key": "role", "value": "full stack developer", "category": "other", "updated_at": "2026-01-01 00:00:00"},
         ]
     }
     assert seen_user_ids == [TEST_USER_ID]
+
+
+def test_update_memory_requires_auth_and_scopes_to_user(monkeypatch):
+    client = make_client(monkeypatch, authenticated=False)
+    calls = []
+
+    def fake_remember_about_me(user_id, key, value, category):
+        calls.append((user_id, key, value, category))
+
+    def fake_get_all_memories_detailed(user_id):
+        return [{"key": "name", "value": "Abhi", "category": "name", "updated_at": "2026-01-01 00:00:00"}]
+
+    monkeypatch.setattr(api, "remember_about_me", fake_remember_about_me)
+    monkeypatch.setattr(api, "get_all_memories_detailed", fake_get_all_memories_detailed)
+
+    res = client.post("/memories/name", json={"value": "Abhi", "category": "name"})
+    assert res.status_code == 401
+    assert calls == []
+
+    api.app.dependency_overrides[api.require_user] = lambda: TEST_USER_ID
+    res = client.post("/memories/name", json={"value": "Abhi", "category": "name"})
+    assert res.status_code == 200
+    assert res.json() == {"key": "name", "value": "Abhi", "category": "name", "updated_at": "2026-01-01 00:00:00"}
+    assert calls == [(TEST_USER_ID, "name", "Abhi", "name")]
+
+
+def test_update_memory_rejects_invalid_category(monkeypatch):
+    client = make_client(monkeypatch)
+    res = client.post("/memories/name", json={"value": "Abhi", "category": "not_real"})
+    assert res.status_code == 422
+
+
+def test_delete_all_memories_requires_auth_and_scopes_to_user(monkeypatch):
+    client = make_client(monkeypatch, authenticated=False)
+    calls = []
+    monkeypatch.setattr(api, "forget_all_about_me", lambda user_id: calls.append(user_id) or 3)
+
+    res = client.delete("/memories")
+    assert res.status_code == 401
+    assert calls == []
+
+    api.app.dependency_overrides[api.require_user] = lambda: TEST_USER_ID
+    res = client.delete("/memories")
+    assert res.status_code == 200
+    assert res.json() == {"status": "cleared", "deleted": 3}
+    assert calls == [TEST_USER_ID]
 
 
 def test_unhandled_exception_returns_clean_json_not_a_traceback(monkeypatch):
@@ -378,10 +427,10 @@ def test_unhandled_exception_returns_clean_json_not_a_traceback(monkeypatch):
     make_client(monkeypatch)
     client = TestClient(api.app, raise_server_exceptions=False)
 
-    def broken_get_all_memories(user_id):
+    def broken_get_all_memories_detailed(user_id):
         raise RuntimeError("boom - unexpected bug")
 
-    monkeypatch.setattr(api, "get_all_memories", broken_get_all_memories)
+    monkeypatch.setattr(api, "get_all_memories_detailed", broken_get_all_memories_detailed)
 
     res = client.get("/memories")
 

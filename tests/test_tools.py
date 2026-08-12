@@ -15,7 +15,9 @@ from tools import (  # noqa: E402
     check_order_status,
     create_support_ticket,
     forget_about_me,
+    forget_all_about_me,
     get_all_memories,
+    get_all_memories_detailed,
     get_current_time,
     open_url,
     read_pdf,
@@ -195,6 +197,49 @@ def test_memories_are_isolated_per_user():
     assert "test_name" not in get_all_memories(TEST_USER)
     # forgetting for one user must not touch the other user's memory
     assert get_all_memories(OTHER_USER)["test_name"] == "Someone Else"
+
+
+def test_remember_about_me_stores_category():
+    remember_about_me(TEST_USER, "test_name", "Abhi", "name")
+    detailed = {m["key"]: m for m in get_all_memories_detailed(TEST_USER)}
+    assert detailed["test_name"]["category"] == "name"
+    assert detailed["test_name"]["value"] == "Abhi"
+
+
+def test_remember_about_me_defaults_to_other_category():
+    remember_about_me(TEST_USER, "test_key", "some value")
+    detailed = {m["key"]: m for m in get_all_memories_detailed(TEST_USER)}
+    assert detailed["test_key"]["category"] == "other"
+
+
+def test_remember_about_me_rejects_unknown_category():
+    remember_about_me(TEST_USER, "test_key", "some value", "not_a_real_category")
+    detailed = {m["key"]: m for m in get_all_memories_detailed(TEST_USER)}
+    assert detailed["test_key"]["category"] == "other"
+
+
+def test_remember_about_me_update_overwrites_category():
+    remember_about_me(TEST_USER, "test_key", "first value", "project")
+    remember_about_me(TEST_USER, "test_key", "second value", "preference")
+    detailed = {m["key"]: m for m in get_all_memories_detailed(TEST_USER)}
+    assert detailed["test_key"]["value"] == "second value"
+    assert detailed["test_key"]["category"] == "preference"
+
+
+def test_forget_all_about_me_clears_only_that_user():
+    try:
+        remember_about_me(TEST_USER, "test_name", "Abhi")
+        remember_about_me(TEST_USER, "test_role", "developer")
+        remember_about_me(OTHER_USER, "test_name", "Someone Else")
+
+        deleted = forget_all_about_me(TEST_USER)
+
+        assert deleted == 2
+        assert get_all_memories(TEST_USER) == {}
+        # other user's memories must survive
+        assert get_all_memories(OTHER_USER)["test_name"] == "Someone Else"
+    finally:
+        forget_all_about_me(OTHER_USER)
 
 
 class FakeTavilyClient:

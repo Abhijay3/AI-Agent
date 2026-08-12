@@ -439,7 +439,7 @@
     white-space: nowrap;
   }
   .memory-item-text b { color: var(--text); font-weight: 600; }
-  .memory-item-del {
+  .memory-item-del, .memory-item-edit-btn {
     background: none;
     border: none;
     color: var(--text-faint);
@@ -451,13 +451,51 @@
     flex-shrink: 0;
     transition: opacity 0.15s, color 0.15s, background 0.15s;
   }
-  .memory-item:hover .memory-item-del { opacity: 1; }
+  .memory-item:hover .memory-item-del,
+  .memory-item:hover .memory-item-edit-btn,
+  .memory-item.editing .memory-item-del,
+  .memory-item.editing .memory-item-edit-btn { opacity: 1; }
   .memory-item-del:hover { color: var(--danger); background: rgba(255, 107, 129, 0.12); }
+  .memory-item-edit-btn:hover { color: var(--accent-2); background: rgba(34, 211, 238, 0.12); }
+  .memory-item-value-edit {
+    flex: 1;
+    min-width: 0;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--surface-border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 12px;
+    font-family: inherit;
+    padding: 3px 6px;
+  }
   .memory-empty {
     font-size: 12px;
     color: var(--text-faint);
     padding: 6px 8px;
   }
+  .memory-group-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    padding: 8px 8px 2px;
+  }
+  .memory-group-label:first-child { padding-top: 2px; }
+  #memoryClearBtn {
+    width: 100%;
+    margin-top: 8px;
+    padding: 7px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--surface-border);
+    background: none;
+    color: var(--text-faint);
+    font-size: 11.5px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+  }
+  #memoryClearBtn:hover { color: var(--danger); border-color: rgba(255, 107, 129, 0.35); background: rgba(255, 107, 129, 0.08); }
+  #memoryClearBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   #mainArea {
     flex: 1;
@@ -1589,6 +1627,14 @@
       }
     }
 
+    const MEMORY_CATEGORY_ORDER = ["name", "preference", "project", "other"];
+    const MEMORY_CATEGORY_LABELS = {
+      name: "Name",
+      preference: "Preferences",
+      project: "Projects",
+      other: "Important information",
+    };
+
     function renderMemories(memories) {
       memoryCountEl.textContent = memories.length ? String(memories.length) : "";
       memoryListEl.innerHTML = "";
@@ -1601,36 +1647,130 @@
         return;
       }
 
+      const byCategory = {};
       for (const m of memories) {
-        const item = document.createElement("div");
-        item.className = "memory-item";
-
-        const text = document.createElement("span");
-        text.className = "memory-item-text";
-        text.innerHTML = `<b>${escapeHtml(m.key)}</b>: ${escapeHtml(m.value)}`;
-
-        const del = document.createElement("button");
-        del.className = "memory-item-del";
-        del.type = "button";
-        del.title = "Forget this";
-        del.textContent = "✕";
-        del.addEventListener("click", async () => {
-          del.disabled = true;
-          try {
-            await fetch(`/memories/${encodeURIComponent(m.key)}`, {
-              method: "DELETE",
-              headers: authHeaders(),
-            });
-            loadMemories();
-          } catch {
-            del.disabled = false;
-          }
-        });
-
-        item.appendChild(text);
-        item.appendChild(del);
-        memoryListEl.appendChild(item);
+        (byCategory[m.category] || (byCategory[m.category] = [])).push(m);
       }
+
+      for (const cat of MEMORY_CATEGORY_ORDER) {
+        const items = byCategory[cat];
+        if (!items || !items.length) continue;
+
+        const label = document.createElement("div");
+        label.className = "memory-group-label";
+        label.textContent = MEMORY_CATEGORY_LABELS[cat] || cat;
+        memoryListEl.appendChild(label);
+
+        for (const m of items) {
+          memoryListEl.appendChild(buildMemoryItem(m));
+        }
+      }
+
+      const clearBtn = document.createElement("button");
+      clearBtn.id = "memoryClearBtn";
+      clearBtn.type = "button";
+      clearBtn.textContent = "Clear memory";
+      clearBtn.addEventListener("click", async () => {
+        if (!confirm("Forget everything remembered about you? This can't be undone.")) return;
+        clearBtn.disabled = true;
+        clearBtn.textContent = "Clearing…";
+        try {
+          await fetch("/memories", { method: "DELETE", headers: authHeaders() });
+          loadMemories();
+        } catch {
+          clearBtn.disabled = false;
+          clearBtn.textContent = "Clear memory";
+        }
+      });
+      memoryListEl.appendChild(clearBtn);
+    }
+
+    function buildMemoryItem(m) {
+      const item = document.createElement("div");
+      item.className = "memory-item";
+
+      const text = document.createElement("span");
+      text.className = "memory-item-text";
+      text.innerHTML = `<b>${escapeHtml(m.key)}</b>: ${escapeHtml(m.value)}`;
+
+      const editBtn = document.createElement("button");
+      editBtn.className = "memory-item-edit-btn";
+      editBtn.type = "button";
+      editBtn.title = "Edit";
+      editBtn.textContent = "✎";
+      editBtn.addEventListener("click", () => startEditingMemory(item, m));
+
+      const del = document.createElement("button");
+      del.className = "memory-item-del";
+      del.type = "button";
+      del.title = "Forget this";
+      del.textContent = "✕";
+      del.addEventListener("click", async () => {
+        del.disabled = true;
+        try {
+          await fetch(`/memories/${encodeURIComponent(m.key)}`, {
+            method: "DELETE",
+            headers: authHeaders(),
+          });
+          loadMemories();
+        } catch {
+          del.disabled = false;
+        }
+      });
+
+      item.appendChild(text);
+      item.appendChild(editBtn);
+      item.appendChild(del);
+      return item;
+    }
+
+    function startEditingMemory(item, m) {
+      item.classList.add("editing");
+      item.innerHTML = "";
+
+      const input = document.createElement("input");
+      input.className = "memory-item-value-edit";
+      input.value = m.value;
+
+      const save = document.createElement("button");
+      save.className = "memory-item-edit-btn";
+      save.type = "button";
+      save.title = "Save";
+      save.textContent = "✓";
+
+      const cancel = document.createElement("button");
+      cancel.className = "memory-item-del";
+      cancel.type = "button";
+      cancel.title = "Cancel";
+      cancel.textContent = "✕";
+      cancel.addEventListener("click", () => loadMemories());
+
+      save.addEventListener("click", async () => {
+        const value = input.value.trim();
+        if (!value) return;
+        save.disabled = true;
+        try {
+          await fetch(`/memories/${encodeURIComponent(m.key)}`, {
+            method: "POST",
+            headers: authHeaders({ "Content-Type": "application/json" }),
+            body: JSON.stringify({ value, category: m.category }),
+          });
+        } catch {
+          // fall through — reload shows whatever the server actually has
+        }
+        loadMemories();
+      });
+
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); save.click(); }
+        if (e.key === "Escape") { e.preventDefault(); cancel.click(); }
+      });
+
+      item.appendChild(input);
+      item.appendChild(save);
+      item.appendChild(cancel);
+      input.focus();
+      input.select();
     }
 
     memoryToggle.addEventListener("click", () => {
@@ -2192,12 +2332,8 @@
       const left = document.createElement("div");
       left.className = "landing-nav-left";
       const mark = document.createElement("div");
-      mark.className = "brand-mark";
-      mark.style.cssText = "width:28px;height:28px;font-size:12px;";
-      mark.textContent = "A";
       const brand = document.createElement("span");
-      brand.className = "landing-nav-brand";
-      brand.textContent = "Abhijay's AI";
+     
       left.appendChild(mark);
       left.appendChild(brand);
 
@@ -2263,7 +2399,7 @@
 
       const title = document.createElement("h1");
       title.className = "hero-title";
-      title.innerHTML = 'Your <span class="grad">AI</span> Copilot.<br/>Built for the <span class="grad">Future</span>.';
+      title.innerHTML = 'Abhijay <span class="grad">AI</span> Agent.<br/>Built for the <span class="grad">Future</span>.';
 
       const sub = document.createElement("p");
       sub.className = "hero-sub";

@@ -157,18 +157,26 @@ def create_support_ticket(name: str, email: str, subject: str, description: str)
     return f"Support ticket #{ticket_id} created. Our team will follow up at {email}."
 
 
-def remember_about_me(user_id: str, key: str, value: str) -> str:
+MEMORY_CATEGORIES = {"name", "preference", "project", "other"}
+
+
+def remember_about_me(user_id: str, key: str, value: str, category: str = "other") -> str:
     normalized_key = key.strip().lower().replace(" ", "_")
     if not normalized_key:
         raise ValueError("Key must not be empty.")
+    if category not in MEMORY_CATEGORIES:
+        category = "other"
 
+    # Also the update path: called again with an existing key (from the LLM
+    # correcting a fact, or the memory-panel "edit" UI) upserts in place —
+    # there's no separate update function, this already is one.
     conn = sqlite3.connect(DB_PATH, timeout=10)
     try:
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO memories (user_id, key, value, updated_at) VALUES (?, ?, ?, datetime('now')) "
-            "ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-            (user_id, normalized_key, value),
+            "INSERT INTO memories (user_id, key, value, category, updated_at) VALUES (?, ?, ?, ?, datetime('now')) "
+            "ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, category = excluded.category, updated_at = excluded.updated_at",
+            (user_id, normalized_key, value, category),
         )
         conn.commit()
     finally:
@@ -193,7 +201,27 @@ def forget_about_me(user_id: str, key: str) -> str:
     return f"Nothing was remembered for '{normalized_key}'."
 
 
+def forget_all_about_me(user_id: str) -> int:
+    # Deliberately not exposed to the LLM as a tool (see agent_core.py) —
+    # wiping someone's entire memory store on the strength of one ambiguous
+    # sentence in a conversation is a worse failure mode than making them
+    # click a real "Clear memory" button.
+    conn = sqlite3.connect(DB_PATH, timeout=10)
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM memories WHERE user_id = ?", (user_id,))
+        deleted = cur.rowcount
+        conn.commit()
+    finally:
+        conn.close()
+    return deleted
+
+
 def get_all_memories(user_id: str) -> dict:
+    """key -> value only — what the system prompt needs. See
+    get_all_memories_detailed for the category/updated_at-aware version the
+    memory UI uses; kept separate so this simpler shape (and its callers)
+    never had to change."""
     conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
     try:
         cur = conn.cursor()
@@ -202,6 +230,20 @@ def get_all_memories(user_id: str) -> dict:
     finally:
         conn.close()
     return dict(rows)
+
+
+def get_all_memories_detailed(user_id: str) -> list:
+    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT key, value, category, updated_at FROM memories WHERE user_id = ? ORDER BY category, key",
+            (user_id,),
+        )
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+    return [{"key": k, "value": v, "category": c, "updated_at": u} for k, v, c, u in rows]
 
 
 def read_pdf(path: str) -> str:

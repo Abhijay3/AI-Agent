@@ -37,6 +37,7 @@ from schemas import (
     LoginRequest,
     MemoriesResponse,
     MemoryItem,
+    MemoryUpdate,
     MeResponse,
     SignupRequest,
     TicketItem,
@@ -45,7 +46,13 @@ from schemas import (
     UploadResponse,
 )
 from setup_db import DB_PATH, ensure_seeded
-from tools import PDF_UPLOAD_DIR, forget_about_me, get_all_memories
+from tools import (
+    PDF_UPLOAD_DIR,
+    forget_about_me,
+    forget_all_about_me,
+    get_all_memories_detailed,
+    remember_about_me,
+)
 
 SESSION_ID_PATH = Path(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
 MEMORY_KEY_PATH = Path(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
@@ -277,8 +284,23 @@ def clear_history(session_id: str = SESSION_ID_PATH, user_id: str = Depends(requ
 @app.get("/memories", response_model=MemoriesResponse)
 @limiter.limit("30/minute")
 def list_memories(request: Request, user_id: str = Depends(require_user)) -> MemoriesResponse:
-    memories = get_all_memories(user_id)
-    return MemoriesResponse(memories=[MemoryItem(key=k, value=v) for k, v in memories.items()])
+    memories = get_all_memories_detailed(user_id)
+    return MemoriesResponse(memories=[MemoryItem(**m) for m in memories])
+
+
+@app.post("/memories/{key}", response_model=MemoryItem)
+@limiter.limit("30/minute")
+def update_memory(
+    request: Request, body: MemoryUpdate, key: str = MEMORY_KEY_PATH, user_id: str = Depends(require_user)
+) -> MemoryItem:
+    # remember_about_me() is already an upsert — editing an existing memory
+    # from the UI is the exact same operation as the LLM correcting one via
+    # conversation, just triggered by a click instead of a sentence.
+    remember_about_me(user_id, key, body.value, body.category)
+    updated = next((m for m in get_all_memories_detailed(user_id) if m["key"] == key.strip().lower().replace(" ", "_")), None)
+    if not updated:
+        raise HTTPException(status_code=500, detail="Memory was saved but couldn't be read back.")
+    return MemoryItem(**updated)
 
 
 @app.delete("/memories/{key}")
@@ -288,6 +310,13 @@ def delete_memory(
 ) -> dict:
     forget_about_me(user_id, key)
     return {"status": "deleted"}
+
+
+@app.delete("/memories")
+@limiter.limit("10/minute")
+def delete_all_memories(request: Request, user_id: str = Depends(require_user)) -> dict:
+    deleted = forget_all_about_me(user_id)
+    return {"status": "cleared", "deleted": deleted}
 
 
 @app.get("/admin/tickets", response_model=TicketsResponse, dependencies=[Depends(require_api_key)])

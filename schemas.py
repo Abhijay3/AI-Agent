@@ -47,10 +47,17 @@ class HistoryResponse(BaseModel):
 class MemoryItem(BaseModel):
     key: str
     value: str
+    category: str
+    updated_at: str
 
 
 class MemoriesResponse(BaseModel):
     memories: list[MemoryItem]
+
+
+class MemoryUpdate(BaseModel):
+    value: str = Field(..., min_length=1, max_length=2000)
+    category: str = Field("other", pattern=r"^(name|preference|project|other)$")
 
 
 class TicketItem(BaseModel):

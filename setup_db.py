@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS memories (
     user_id TEXT NOT NULL,
     key TEXT NOT NULL,
     value TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'other',
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     PRIMARY KEY (user_id, key)
 );
@@ -88,6 +89,11 @@ def ensure_seeded(path: str = DB_PATH) -> None:
             existing_columns = {row[1] for row in cur.fetchall()}
             if "user_id" not in existing_columns:
                 cur.execute("DROP TABLE memories")
+            elif "category" not in existing_columns:
+                # Additive migration, unlike the drop above: real per-user
+                # memories exist by now and must survive. Existing rows just
+                # get the same default the column declares for new ones.
+                cur.execute("ALTER TABLE memories ADD COLUMN category TEXT NOT NULL DEFAULT 'other'")
 
         cur.executescript(SCHEMA)
 
