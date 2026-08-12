@@ -141,6 +141,7 @@
     color: #0b0620;
   }
   .rail-btn.primary:hover { filter: brightness(1.08); }
+  .rail-btn.active { background: rgba(124, 92, 255, 0.22); color: var(--text); }
   .rail-spacer { flex: 1; }
 
   /* ---------- top bar (inside main area) ---------- */
@@ -821,6 +822,19 @@
   }
   #sendBtn:hover:not(:disabled) { filter: brightness(1.08); }
 
+  #micBtn.listening {
+    background: var(--danger);
+    color: #fff;
+    animation: mic-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes mic-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 129, 0.55); }
+    50% { box-shadow: 0 0 0 8px rgba(255, 107, 129, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #micBtn.listening { animation: none; }
+  }
+
   #chatWrap.drag-over::after {
     content: "Drop a PDF to attach";
     position: fixed;
@@ -1424,6 +1438,9 @@
       <button id="railMemoryToggle" class="rail-btn" type="button" title="What I know about you">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2a3.5 3.5 0 0 0-3.5 3.5v.6A3 3 0 0 0 4 9v1a3 3 0 0 0 1 2.24V14a4 4 0 0 0 4 4v1a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-1a4 4 0 0 0 4-4v-1.76A3 3 0 0 0 20 10V9a3 3 0 0 0-2-2.83v-.67A3.5 3.5 0 0 0 14.5 2h-5z"/></svg>
       </button>
+      <button id="railVoiceToggle" class="rail-btn" type="button" title="Speak AI replies aloud">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+      </button>
       <div class="rail-spacer"></div>
       <button id="railLogout" class="rail-btn" type="button" title="Sign out">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -1468,6 +1485,9 @@
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
             </button>
             <textarea id="messageInput" rows="1" placeholder="Ask anything…" autocomplete="off"></textarea>
+            <button id="micBtn" type="button" class="icon-btn" title="Speak your message" hidden>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            </button>
             <button id="sendBtn" type="button" class="icon-btn" title="Send">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
             </button>
@@ -1507,6 +1527,8 @@
     const railNewChat = document.getElementById("railNewChat");
     const railHistoryToggle = document.getElementById("railHistoryToggle");
     const railMemoryToggle = document.getElementById("railMemoryToggle");
+    const railVoiceToggle = document.getElementById("railVoiceToggle");
+    const micBtn = document.getElementById("micBtn");
 
     // ---------- sidebar drawer open/close (rail-triggered, all sizes) ----------
     function openSidebar() {
@@ -3090,6 +3112,7 @@
       inputEl.style.height = "auto";
       setAttachment(null);
       sendBtn.disabled = true;
+      micBtn.disabled = true;
 
       // placeholder AI row: starts as "thinking" dots, becomes tool-status
       // text, then morphs into the streamed markdown answer. toolsRow holds
@@ -3216,8 +3239,9 @@
         if (targetSessionId === activeId && !answerStarted && !settled) {
           // stream ended with nothing to show (shouldn't normally happen)
           statusRow.remove();
-        } else if (targetSessionId === activeId && answerStarted && sources.length) {
-          appendSources(bubble, sources);
+        } else if (targetSessionId === activeId && answerStarted) {
+          if (sources.length) appendSources(bubble, sources);
+          speakText(answerText);
         }
       } catch (e) {
         if (targetSessionId === activeId) {
@@ -3226,12 +3250,134 @@
         }
       } finally {
         sendBtn.disabled = false;
+        micBtn.disabled = false;
         inputEl.focus();
         loadMemories();
       }
     }
 
     sendBtn.addEventListener("click", sendMessage);
+
+    // ---------- voice input (speech-to-text, browser-native) ----------
+    // Web Speech API only — no server round trip, no new cost. Chrome/Edge
+    // support it; Safari (desktop and iOS) never implemented
+    // SpeechRecognition at all, only SpeechSynthesis — micBtn stays hidden
+    // there rather than showing a control that can't work.
+    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    let isListening = false;
+
+    if (SpeechRecognitionCtor) {
+      micBtn.hidden = false;
+      recognition = new SpeechRecognitionCtor();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      // en-IN rather than en-US: this app leans heavily on natural Hinglish
+      // (mixed Hindi/English) input, and Indian-English recognition
+      // profiles handle that code-switching noticeably better than US
+      // English does. Still imperfect for heavy Hindi content — there's no
+      // true "Hinglish" language tag, and fixing that properly would mean
+      // a cloud STT provider, which wasn't the chosen direction yet.
+      recognition.lang = "en-IN";
+
+      let finalTranscript = "";
+
+      recognition.addEventListener("start", () => {
+        isListening = true;
+        micBtn.classList.add("listening");
+        finalTranscript = "";
+      });
+
+      recognition.addEventListener("result", (e) => {
+        let interim = "";
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const transcript = e.results[i][0].transcript;
+          if (e.results[i].isFinal) finalTranscript += transcript;
+          else interim += transcript;
+        }
+        inputEl.value = (finalTranscript + interim).trim();
+        inputEl.dispatchEvent(new Event("input")); // grow the textarea to fit
+      });
+
+      recognition.addEventListener("error", (e) => {
+        isListening = false;
+        micBtn.classList.remove("listening");
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+          addMessage("system", "Microphone access is blocked — allow it in your browser's site settings to use voice input.");
+        } else if (e.error !== "no-speech" && e.error !== "aborted") {
+          addMessage("system", "Voice input error: " + e.error);
+        }
+      });
+
+      recognition.addEventListener("end", () => {
+        isListening = false;
+        micBtn.classList.remove("listening");
+        // A real final transcript means the user actually finished
+        // speaking — send it immediately, the same way a voice assistant
+        // would, instead of making them also click send.
+        if (finalTranscript.trim()) {
+          inputEl.value = finalTranscript.trim();
+          sendMessage();
+        }
+      });
+
+      micBtn.addEventListener("click", () => {
+        if (isListening) {
+          recognition.stop();
+        } else {
+          try {
+            recognition.start();
+          } catch {
+            // start() throws if called while already starting/running — a
+            // stray double-click, not worth surfacing as an error
+          }
+        }
+      });
+    } else {
+      micBtn.hidden = true; // no control for a capability this browser doesn't have
+    }
+
+    // ---------- voice output (text-to-speech, browser-native) ----------
+    const VOICE_OUTPUT_KEY = "voice_output_enabled";
+    let voiceOutputEnabled = localStorage.getItem(VOICE_OUTPUT_KEY) === "true";
+
+    function updateVoiceToggleUI() {
+      railVoiceToggle.classList.toggle("active", voiceOutputEnabled);
+      railVoiceToggle.title = voiceOutputEnabled ? "Voice replies: on (click to mute)" : "Voice replies: off (click to enable)";
+    }
+
+    if ("speechSynthesis" in window) {
+      updateVoiceToggleUI();
+      railVoiceToggle.addEventListener("click", () => {
+        voiceOutputEnabled = !voiceOutputEnabled;
+        localStorage.setItem(VOICE_OUTPUT_KEY, String(voiceOutputEnabled));
+        updateVoiceToggleUI();
+        if (!voiceOutputEnabled) speechSynthesis.cancel();
+      });
+    } else {
+      railVoiceToggle.hidden = true; // no control for a capability this browser doesn't have
+      voiceOutputEnabled = false;
+    }
+
+    function stripMarkdownForSpeech(text) {
+      return text
+        .replace(/```[\s\S]*?```/g, " — code omitted — ") // reading code aloud character-by-character helps no one
+        .replace(/`([^`]+)`/g, "$1")
+        .replace(/\*\*([^*]+)\*\*/g, "$1")
+        .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, "$1")
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+        .replace(/^#{1,6}\s+/gm, "")
+        .replace(/^[-*]\s+/gm, "")
+        .trim();
+    }
+
+    function speakText(text) {
+      if (!voiceOutputEnabled || !("speechSynthesis" in window)) return;
+      const clean = stripMarkdownForSpeech(text);
+      if (!clean) return;
+      speechSynthesis.cancel(); // don't let two replies overlap
+      speechSynthesis.speak(new SpeechSynthesisUtterance(clean));
+    }
 
     // ---------- auth screen wiring ----------
     const authScreenEl = document.getElementById("authScreen");
