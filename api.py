@@ -6,7 +6,7 @@ import sqlite3
 import uuid
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Security, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Body, Depends, FastAPI, HTTPException, Path, Query, Request, Security, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
@@ -57,6 +57,7 @@ from tools import (
 
 SESSION_ID_PATH = Path(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
 MEMORY_KEY_PATH = Path(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+DESKTOP_AGENT_CAPABILITY_PATH = Path(..., min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
 TICKET_ID_PATH = Path(..., ge=1)
 TICKET_STATUS_QUERY = Query(None, pattern=r"^(open|resolved)$")
 
@@ -192,6 +193,28 @@ async def desktop_agent_ping(request: Request, user_id: str = Depends(require_us
     # system — that starts in a later phase.
     try:
         return await desktop_agent_hub.call("ping")
+    except ConnectionError:
+        raise HTTPException(status_code=503, detail="Desktop agent is not connected")
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Desktop agent did not respond in time")
+
+
+@app.post("/desktop-agent/capability/{name}")
+@limiter.limit("20/minute")
+async def desktop_agent_capability(
+    request: Request,
+    name: str = DESKTOP_AGENT_CAPABILITY_PATH,
+    params: dict = Body(default={}),
+    user_id: str = Depends(require_user),
+) -> dict:
+    # Generic invocation for any macOS capability the connected agent has
+    # registered (see desktop_agent/capabilities.py) — open_application,
+    # get_system_info, take_screenshot, etc. This only ever reaches a name
+    # the agent itself explicitly implements; there's no way to smuggle an
+    # arbitrary command through `name` or `params`, since the agent looks
+    # `name` up in its own fixed capability dict rather than executing it.
+    try:
+        return await desktop_agent_hub.call(name, params)
     except ConnectionError:
         raise HTTPException(status_code=503, detail="Desktop agent is not connected")
     except TimeoutError:

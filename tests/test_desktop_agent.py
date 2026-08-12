@@ -256,3 +256,54 @@ def test_desktop_agent_ping_times_out_if_agent_never_replies(monkeypatch):
 
             res = client.post("/desktop-agent/ping")
             assert res.status_code == 504
+
+
+def test_desktop_agent_capability_requires_auth():
+    client = TestClient(api.app)
+    res = client.post("/desktop-agent/capability/get_system_info", json={})
+    assert res.status_code == 401
+
+
+def test_desktop_agent_capability_returns_503_when_not_connected():
+    api.app.dependency_overrides[api.require_user] = lambda: "test-user"
+    client = TestClient(api.app)
+    res = client.post("/desktop-agent/capability/get_system_info", json={})
+    assert res.status_code == 503
+
+
+def test_desktop_agent_capability_round_trip_with_params():
+    # Proves the generic capability endpoint forwards arbitrary params
+    # through to whatever the agent implements — e.g. open_application's
+    # {"name": "Calculator"} — not just the no-arg ping used elsewhere.
+    api.app.dependency_overrides[api.require_user] = lambda: "test-user"
+    with TestClient(api.app) as client:
+        with client.websocket_connect("/desktop-agent/ws", headers={"Authorization": "Bearer secret123"}) as ws:
+            ws.send_text(json.dumps({
+                "hostname": "abhis-mac", "platform": "macOS-14",
+                "capabilities": ["open_application"],
+            }))
+            assert _wait_until(lambda: api.desktop_agent_hub.is_connected())
+
+            result_holder = {}
+
+            def do_call():
+                result_holder["res"] = client.post(
+                    "/desktop-agent/capability/open_application", json={"name": "Calculator"}
+                )
+
+            thread = threading.Thread(target=do_call)
+            thread.start()
+
+            incoming = json.loads(ws.receive_text())
+            assert incoming["capability"] == "open_application"
+            assert incoming["params"] == {"name": "Calculator"}
+            ws.send_text(json.dumps({
+                "request_id": incoming["request_id"],
+                "ok": True,
+                "result": {"opened": "Calculator"},
+            }))
+
+            thread.join(timeout=5)
+            res = result_holder["res"]
+            assert res.status_code == 200
+            assert res.json()["result"] == {"opened": "Calculator"}
