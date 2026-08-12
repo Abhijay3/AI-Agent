@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from openai import BadRequestError, OpenAI, RateLimitError
 
 from rag import retrieve_with_sources
+from tool_registry import Tool, all_tools, get_tool, openai_tool_schemas, register_tool
 from tools import (
     browse_webpage,
     calculator,
@@ -23,7 +24,6 @@ from tools import (
     read_pdf,
     remember_about_me,
     run_sql_query,
-    web_search,
     web_search_with_sources,
 )
 
@@ -38,274 +38,211 @@ client = OpenAI(
 
 MODEL = "llama-3.3-70b-versatile"
 
-tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "calculator",
-            "description": "Perform a basic arithmetic operation (add, subtract, multiply, divide) between two numbers.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "operation": {
-                        "type": "string",
-                        "enum": ["add", "subtract", "multiply", "divide"],
-                    },
-                    "a": {"type": "number"},
-                    "b": {"type": "number"},
-                },
-                "required": ["operation", "a", "b"],
-                "additionalProperties": False,
+# Every tool is declared once, here, with everything the rest of the app
+# needs to know about it: name, description, parameter schema, execution
+# function, risk level, and whether it requires confirmation before running.
+# agent_core's tool-calling loop (below) reads all of this through
+# tool_registry rather than hardcoding per-tool behavior, so a future tool
+# module (macOS tools, file tools, ...) can add tools by calling
+# register_tool() from wherever it's defined — no edits needed here.
+#
+# Nothing below is above "safe"/"low" risk today, since nothing destructive
+# or irreversible exists in this app yet. requires_confirmation is the
+# extension point for when that changes (e.g. deleting a file, shutting
+# down a machine): mark it True and the confirmation UX (not yet built,
+# since there's nothing to protect yet) plugs in without touching the loop.
+register_tool(Tool(
+    name="calculator",
+    description="Perform a basic arithmetic operation (add, subtract, multiply, divide) between two numbers.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "operation": {"type": "string", "enum": ["add", "subtract", "multiply", "divide"]},
+            "a": {"type": "number"},
+            "b": {"type": "number"},
+        },
+        "required": ["operation", "a", "b"],
+        "additionalProperties": False,
+    },
+    handler=calculator,
+))
+register_tool(Tool(
+    name="get_weather",
+    description="Get the current weather for a given city.",
+    parameters={
+        "type": "object",
+        "properties": {"city": {"type": "string"}},
+        "required": ["city"],
+        "additionalProperties": False,
+    },
+    handler=get_weather,
+))
+register_tool(Tool(
+    name="run_sql_query",
+    description=(
+        "Run a read-only SQL SELECT query against the 'products' table "
+        "(columns: id, name, price, stock) to answer questions about inventory."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {"query": {"type": "string"}},
+        "required": ["query"],
+        "additionalProperties": False,
+    },
+    handler=run_sql_query,
+))
+register_tool(Tool(
+    name="check_order_status",
+    description=(
+        "Look up the status of a customer's order by order ID and the "
+        "email address it was placed under. Both must match."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "order_id": {"type": "integer"},
+            "email": {"type": "string"},
+        },
+        "required": ["order_id", "email"],
+        "additionalProperties": False,
+    },
+    handler=check_order_status,
+))
+register_tool(Tool(
+    name="create_support_ticket",
+    description=(
+        "File a support ticket for an issue the agent can't resolve directly "
+        "(e.g. a complaint, a return request, a bug report). Only use this "
+        "after collecting the customer's name, email, and a clear description "
+        "of the issue."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "email": {"type": "string"},
+            "subject": {"type": "string"},
+            "description": {"type": "string"},
+        },
+        "required": ["name", "email", "subject", "description"],
+        "additionalProperties": False,
+    },
+    handler=create_support_ticket,
+    risk_level="low",
+))
+register_tool(Tool(
+    name="remember_about_me",
+    description=(
+        "Save a durable fact about the person you're talking to, so "
+        "you remember it in every future conversation with them, "
+        "not just this one — e.g. their name, role, company, or "
+        "preferences. Use a short lowercase key like 'name' or "
+        "'role'. Calling this again with the same key overwrites "
+        "the old value, so use it to correct facts too."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "key": {"type": "string"},
+            "value": {"type": "string"},
+            "category": {
+                "type": "string",
+                "enum": ["name", "preference", "project", "other"],
+                "description": "How this shows up grouped in the memory panel. Use 'name' only for their actual name.",
             },
         },
+        "required": ["key", "value"],
+        "additionalProperties": False,
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_weather",
-            "description": "Get the current weather for a given city.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "city": {"type": "string"},
-                },
-                "required": ["city"],
-                "additionalProperties": False,
-            },
-        },
+    handler=remember_about_me,
+    needs_user_id=True,
+))
+register_tool(Tool(
+    name="forget_about_me",
+    description="Remove a previously remembered fact about the user by its key.",
+    parameters={
+        "type": "object",
+        "properties": {"key": {"type": "string"}},
+        "required": ["key"],
+        "additionalProperties": False,
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "run_sql_query",
-            "description": (
-                "Run a read-only SQL SELECT query against the 'products' table "
-                "(columns: id, name, price, stock) to answer questions about inventory."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string"},
-                },
-                "required": ["query"],
-                "additionalProperties": False,
-            },
-        },
+    handler=forget_about_me,
+    risk_level="low",
+    needs_user_id=True,
+))
+register_tool(Tool(
+    name="web_search",
+    description=(
+        "Search the web for current/factual information not reliably known "
+        "from training data (news, prices, weather, recent releases, etc). "
+        "Always pass a clear, effective English query capturing the user's "
+        "intent, even if they asked in another language — translate/rewrite "
+        "it first, don't pass their raw text through unless it's already "
+        "a good English query."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {"query": {"type": "string"}},
+        "required": ["query"],
+        "additionalProperties": False,
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "check_order_status",
-            "description": (
-                "Look up the status of a customer's order by order ID and the "
-                "email address it was placed under. Both must match."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "order_id": {"type": "integer"},
-                    "email": {"type": "string"},
-                },
-                "required": ["order_id", "email"],
-                "additionalProperties": False,
-            },
-        },
+    handler=web_search_with_sources,
+    returns_sources=True,
+))
+register_tool(Tool(
+    name="read_pdf",
+    description="Extract and return the text content of a PDF file given its local file path.",
+    parameters={
+        "type": "object",
+        "properties": {"path": {"type": "string"}},
+        "required": ["path"],
+        "additionalProperties": False,
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "create_support_ticket",
-            "description": (
-                "File a support ticket for an issue the agent can't resolve directly "
-                "(e.g. a complaint, a return request, a bug report). Only use this "
-                "after collecting the customer's name, email, and a clear description "
-                "of the issue."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string"},
-                    "email": {"type": "string"},
-                    "subject": {"type": "string"},
-                    "description": {"type": "string"},
-                },
-                "required": ["name", "email", "subject", "description"],
-                "additionalProperties": False,
-            },
-        },
+    handler=read_pdf,
+))
+register_tool(Tool(
+    name="browse_webpage",
+    description="Open a URL in a real browser and return the visible page text (works on JS-rendered pages).",
+    parameters={
+        "type": "object",
+        "properties": {"url": {"type": "string"}},
+        "required": ["url"],
+        "additionalProperties": False,
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "remember_about_me",
-            "description": (
-                "Save a durable fact about the person you're talking to, so "
-                "you remember it in every future conversation with them, "
-                "not just this one — e.g. their name, role, company, or "
-                "preferences. Use a short lowercase key like 'name' or "
-                "'role'. Calling this again with the same key overwrites "
-                "the old value, so use it to correct facts too."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "key": {"type": "string"},
-                    "value": {"type": "string"},
-                    "category": {
-                        "type": "string",
-                        "enum": ["name", "preference", "project", "other"],
-                        "description": "How this shows up grouped in the memory panel. Use 'name' only for their actual name.",
-                    },
-                },
-                "required": ["key", "value"],
-                "additionalProperties": False,
-            },
-        },
+    handler=browse_webpage,
+))
+register_tool(Tool(
+    name="get_current_time",
+    description="Get the current date and time, optionally in a specific IANA timezone (e.g. 'Asia/Kolkata', 'America/New_York'). Defaults to UTC.",
+    parameters={
+        "type": "object",
+        "properties": {"timezone": {"type": "string"}},
+        "required": [],
+        "additionalProperties": False,
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "forget_about_me",
-            "description": "Remove a previously remembered fact about the user by its key.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "key": {"type": "string"},
-                },
-                "required": ["key"],
-                "additionalProperties": False,
-            },
-        },
+    handler=get_current_time,
+))
+register_tool(Tool(
+    name="open_url",
+    description=(
+        "Open a URL for the user in a new browser tab (e.g. a page found via "
+        "web_search, or a well-known site they asked for like 'open YouTube'). "
+        "This opens it in their current browser tab, not a separate application — "
+        "say so naturally if that distinction matters to what they asked."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {"url": {"type": "string"}},
+        "required": ["url"],
+        "additionalProperties": False,
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "web_search",
-            "description": (
-                "Search the web for current/factual information not reliably known "
-                "from training data (news, prices, weather, recent releases, etc). "
-                "Always pass a clear, effective English query capturing the user's "
-                "intent, even if they asked in another language — translate/rewrite "
-                "it first, don't pass their raw text through unless it's already "
-                "a good English query."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string"},
-                },
-                "required": ["query"],
-                "additionalProperties": False,
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "read_pdf",
-            "description": "Extract and return the text content of a PDF file given its local file path.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string"},
-                },
-                "required": ["path"],
-                "additionalProperties": False,
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "browse_webpage",
-            "description": "Open a URL in a real browser and return the visible page text (works on JS-rendered pages).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string"},
-                },
-                "required": ["url"],
-                "additionalProperties": False,
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_current_time",
-            "description": "Get the current date and time, optionally in a specific IANA timezone (e.g. 'Asia/Kolkata', 'America/New_York'). Defaults to UTC.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "timezone": {"type": "string"},
-                },
-                "required": [],
-                "additionalProperties": False,
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "open_url",
-            "description": (
-                "Open a URL for the user in a new browser tab (e.g. a page found via "
-                "web_search, or a well-known site they asked for like 'open YouTube'). "
-                "This opens it in their current browser tab, not a separate application — "
-                "say so naturally if that distinction matters to what they asked."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string"},
-                },
-                "required": ["url"],
-                "additionalProperties": False,
-            },
-        },
-    },
-]
+    handler=open_url,
+    client_action=lambda args: {"action": "open_url", "url": args["url"]},
+))
 
-TOOL_FUNCTIONS = {
-    "calculator": calculator,
-    "get_weather": get_weather,
-    "get_current_time": get_current_time,
-    "run_sql_query": run_sql_query,
-    "web_search": web_search,
-    "open_url": open_url,
-    "read_pdf": read_pdf,
-    "browse_webpage": browse_webpage,
-    "check_order_status": check_order_status,
-    "create_support_ticket": create_support_ticket,
-    "remember_about_me": remember_about_me,
-    "forget_about_me": forget_about_me,
-}
-
-# Every tool declares a risk level here, independent of whether it's
-# actually risky yet — nothing below is above "safe" today, since nothing
-# destructive/irreversible exists in this app. This is the extension point
-# for future tools that genuinely need a confirm-before-execute flow (e.g.
-# deleting a file, shutting down a machine): add the tool, mark
-# requires_confirmation=True, and the confirmation UX (not yet built,
-# since there's nothing to protect yet) plugs in without touching the
-# tool-calling loop itself. The assertion below is load-bearing, not
-# decorative — a new tool added without a risk entry fails at import time
-# instead of silently shipping unclassified.
-TOOL_RISK = {
-    "calculator": {"risk_level": "safe", "requires_confirmation": False},
-    "get_weather": {"risk_level": "safe", "requires_confirmation": False},
-    "get_current_time": {"risk_level": "safe", "requires_confirmation": False},
-    "run_sql_query": {"risk_level": "safe", "requires_confirmation": False},
-    "web_search": {"risk_level": "safe", "requires_confirmation": False},
-    "open_url": {"risk_level": "safe", "requires_confirmation": False},
-    "read_pdf": {"risk_level": "safe", "requires_confirmation": False},
-    "browse_webpage": {"risk_level": "safe", "requires_confirmation": False},
-    "check_order_status": {"risk_level": "safe", "requires_confirmation": False},
-    "create_support_ticket": {"risk_level": "low", "requires_confirmation": False},
-    "remember_about_me": {"risk_level": "safe", "requires_confirmation": False},
-    "forget_about_me": {"risk_level": "low", "requires_confirmation": False},
-}
-assert set(TOOL_FUNCTIONS) == set(TOOL_RISK), "every tool in TOOL_FUNCTIONS needs a TOOL_RISK entry"
+tools = openai_tool_schemas()
+TOOL_FUNCTIONS = {t.name: t.handler for t in all_tools()}
+TOOL_RISK = {t.name: {"risk_level": t.risk_level, "requires_confirmation": t.requires_confirmation} for t in all_tools()}
 
 
 MAX_RETRIES = 3
@@ -341,25 +278,34 @@ def _trim_history(messages: list) -> list:
 def _run_tool(name: str, arguments_json: str, user_id: str) -> tuple:
     """Returns (content_for_model, sources, client_action).
 
-    sources is only ever non-None for web_search, letting the UI show real
-    citations instead of parsing them back out of the prose the model reads.
-
-    client_action signals something the frontend must do itself — the
-    backend is a cloud container, it cannot open a tab in the user's actual
-    browser, only ask it to. Only open_url sets this today; it's the same
+    Which of these apply for a given tool comes from its registration in
+    tool_registry (needs_user_id, returns_sources, client_action) rather
+    than being hardcoded per tool name here — see Tool for what each flag
+    means. sources is only ever non-None for tools with returns_sources=True
+    (currently just web_search), letting the UI show real citations instead
+    of parsing them back out of the prose the model reads. client_action
+    signals something the frontend must do itself — the backend is a cloud
+    container, it cannot open a tab in the user's actual browser, only ask
+    it to; open_url is the first tool that needs this, and the same
     extension point a future "run this on the desktop agent" action would
     use once one exists.
+
+    The actual callable is still looked up through TOOL_FUNCTIONS (a plain,
+    mutable dict derived from the registry at import time) rather than the
+    Tool object's own handler reference, so tests can substitute a fake
+    implementation via monkeypatch.setitem without re-registering a tool.
     """
     args = json.loads(arguments_json) if arguments_json else {}
-    if name in ("remember_about_me", "forget_about_me"):
+    tool = get_tool(name)
+    if tool.needs_user_id:
         args["user_id"] = user_id
     try:
-        if name == "web_search":
-            content, sources = web_search_with_sources(**args)
-            return content, sources, None
         function = TOOL_FUNCTIONS[name]
+        if tool.returns_sources:
+            content, sources = function(**args)
+            return content, sources, None
         content = str(function(**args))
-        client_action = {"action": "open_url", "url": args["url"]} if name == "open_url" else None
+        client_action = tool.client_action(args) if tool.client_action else None
         return content, None, client_action
     except Exception as e:
         # Tools raise ValueError for expected, already-friendly failures

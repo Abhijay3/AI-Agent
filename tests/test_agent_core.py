@@ -95,9 +95,9 @@ def test_stream_turn_emits_sources_event_for_web_search(monkeypatch):
     second_call_chunks = [make_chunk(content="It costs a lot.")]
     responses = [iter(first_call_chunks), iter(second_call_chunks)]
     monkeypatch.setattr(agent_core, "call_model_stream", lambda messages: responses.pop(0))
-    monkeypatch.setattr(
-        agent_core,
-        "web_search_with_sources",
+    monkeypatch.setitem(
+        agent_core.TOOL_FUNCTIONS,
+        "web_search",
         lambda query: ("Tavily's synthesized answer: a lot", [{"title": "Apple", "url": "https://apple.com"}]),
     )
 
@@ -228,9 +228,9 @@ def test_run_tool_catches_unexpected_exceptions(monkeypatch):
 
 
 def test_run_tool_returns_sources_for_web_search(monkeypatch):
-    monkeypatch.setattr(
-        agent_core,
-        "web_search_with_sources",
+    monkeypatch.setitem(
+        agent_core.TOOL_FUNCTIONS,
+        "web_search",
         lambda query: ("some search result text", [{"title": "Example", "url": "https://example.com"}]),
     )
 
