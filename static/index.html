@@ -497,6 +497,28 @@
   #memoryClearBtn:hover { color: var(--danger); border-color: rgba(255, 107, 129, 0.35); background: rgba(255, 107, 129, 0.08); }
   #memoryClearBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+  #desktopAgentStatus {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px;
+    margin-top: 4px;
+    border-top: 1px solid var(--surface-border);
+    font-size: 11.5px;
+    color: var(--text-faint);
+    flex-shrink: 0;
+  }
+  #desktopAgentDot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-faint);
+    flex-shrink: 0;
+    transition: background 0.2s;
+  }
+  #desktopAgentStatus.connected #desktopAgentDot { background: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, 0.6); }
+  #desktopAgentStatus.connected { color: var(--text-dim); }
+
   #mainArea {
     flex: 1;
     min-width: 0;
@@ -1498,6 +1520,10 @@
         </button>
         <div id="memoryList"></div>
       </div>
+      <div id="desktopAgentStatus">
+        <span id="desktopAgentDot"></span>
+        <span id="desktopAgentLabel">Desktop agent: not connected</span>
+      </div>
     </aside>
 
     <main id="mainArea">
@@ -1778,6 +1804,39 @@
       memoryListEl.classList.toggle("open", memoryPanelOpen);
       if (memoryPanelOpen) loadMemories();
     });
+
+    // ---------- desktop agent connection status ----------
+    // Reflects desktop_agent_hub's real state, polled from the backend —
+    // never set to "connected" locally just because a request succeeded.
+    const desktopAgentStatusEl = document.getElementById("desktopAgentStatus");
+    const desktopAgentLabelEl = document.getElementById("desktopAgentLabel");
+    let desktopAgentPollTimer = null;
+
+    async function loadDesktopAgentStatus() {
+      try {
+        const res = await fetch("/desktop-agent/status", { headers: authHeaders() });
+        if (!res.ok) return;
+        renderDesktopAgentStatus(await res.json());
+      } catch {
+        // silent — the next poll tries again; a failed check must never be
+        // shown as "connected", so leave whatever was last rendered alone.
+      }
+    }
+
+    function renderDesktopAgentStatus(data) {
+      const connected = !!data.connected;
+      desktopAgentStatusEl.classList.toggle("connected", connected);
+      desktopAgentLabelEl.textContent =
+        connected && data.agent && data.agent.hostname
+          ? `Desktop agent: connected (${data.agent.hostname})`
+          : "Desktop agent: not connected";
+    }
+
+    function startDesktopAgentStatusPolling() {
+      loadDesktopAgentStatus();
+      if (desktopAgentPollTimer) clearInterval(desktopAgentPollTimer);
+      desktopAgentPollTimer = setInterval(loadDesktopAgentStatus, 15000);
+    }
 
     // Sessions (chat tabs) are stored per-account, so switching accounts on
     // the same browser never shows a different person's tab list.
@@ -3543,6 +3602,7 @@
       renderChatList();
       loadActiveHistory();
       loadMemories();
+      startDesktopAgentStatusPolling();
     }
 
     authTabs.forEach((tab) => {

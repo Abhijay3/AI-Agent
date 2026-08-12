@@ -6,7 +6,7 @@ import sqlite3
 import uuid
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Security, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, Security, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
@@ -17,6 +17,7 @@ from starlette.concurrency import iterate_in_threadpool
 
 from agent_core import run_turn, stream_turn
 from agent_core import tools as AGENT_TOOL_SCHEMAS
+from desktop_agent_hub import DESKTOP_AGENT_KEY, hub as desktop_agent_hub
 from auth import (
     create_session,
     create_user,
@@ -132,6 +133,69 @@ def tools_count() -> dict:
     # of what's registered in agent_core.tools, not a hand-maintained number
     # that could silently drift out of sync with the actual tool list.
     return {"count": len(AGENT_TOOL_SCHEMAS)}
+
+
+@app.websocket("/desktop-agent/ws")
+async def desktop_agent_ws(websocket: WebSocket) -> None:
+    # Authenticated before accept() so an unauthenticated caller never gets
+    # a live socket to poke at — this is the one entry point the local
+    # desktop agent uses, and it must never be reachable without the
+    # shared secret (which the browser never holds).
+    auth_header = websocket.headers.get("authorization", "")
+    token = auth_header[7:] if auth_header.startswith("Bearer ") else None
+    if not DESKTOP_AGENT_KEY or token != DESKTOP_AGENT_KEY:
+        await websocket.close(code=4401)
+        return
+
+    await websocket.accept()
+    try:
+        hello_raw = await websocket.receive_text()
+        hello = json.loads(hello_raw)
+    except Exception:
+        await websocket.close(code=4400)
+        return
+
+    agent_info = {
+        "hostname": str(hello.get("hostname", "unknown"))[:200],
+        "platform": str(hello.get("platform", "unknown"))[:200],
+        "capabilities": [str(c) for c in hello.get("capabilities", [])][:50],
+    }
+    await desktop_agent_hub.register(websocket, agent_info)
+    logger.info("desktop agent connected: %s", agent_info)
+
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            await desktop_agent_hub.handle_message(raw)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await desktop_agent_hub.unregister(websocket)
+        logger.info("desktop agent disconnected: %s", agent_info.get("hostname"))
+
+
+@app.get("/desktop-agent/status")
+@limiter.limit("30/minute")
+def desktop_agent_status(request: Request, user_id: str = Depends(require_user)) -> dict:
+    # Must reflect the real, current state of desktop_agent_hub — never a
+    # hardcoded or assumed value. There is exactly one source of truth for
+    # "connected": whether a WebSocket is actually registered right now.
+    return desktop_agent_hub.status()
+
+
+@app.post("/desktop-agent/ping")
+@limiter.limit("10/minute")
+async def desktop_agent_ping(request: Request, user_id: str = Depends(require_user)) -> dict:
+    # Proves the whole pipe actually works end-to-end (auth, connection,
+    # message routing, a real response coming back from a real process on
+    # the user's Mac) without yet exposing any capability that touches the
+    # system — that starts in a later phase.
+    try:
+        return await desktop_agent_hub.call("ping")
+    except ConnectionError:
+        raise HTTPException(status_code=503, detail="Desktop agent is not connected")
+    except TimeoutError:
+        raise HTTPException(status_code=504, detail="Desktop agent did not respond in time")
 
 
 @app.get("/", response_class=HTMLResponse)
